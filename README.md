@@ -7,4 +7,5 @@ An Optical Character Recognition (OCR) application that automatically solves wor
 - Martin LEMEE - Word search solving algorithm
 - Tristan DRUART - Neural network implementation
 
-
+## Build & run
+Please refer to the README files in each folder.
