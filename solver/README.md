@@ -21,4 +21,4 @@ Once compiled, you can execute the program by running:
 
 `./solver <path_to_grid> <word>`
 
-If the word was found the process return the coords of the first and the last letter in the grid. Otherwise, it returns : "Not Found".
+If the word was found the process returns the coords of the first and the last letter in the grid. Otherwise, it returns: "Not Found".
