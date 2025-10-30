@@ -3,14 +3,14 @@
 #ifndef NEURAL_NETWORK_H
 #define NEURAL_NETWORK_H
 
-// Librairies utilisées
+// libs used
 #include <stdlib.h>
 #include <stddef.h>
 #include <math.h>
 #include <time.h>
 #include <stdio.h>
 
-typedef struct {                     // On crée un type de donnée pour simplifier la gestion du réseau de neurones
+typedef struct {                     // creation of a data type to simplify the neural network management 
     size_t input_size;
     size_t hidden_size;
     size_t output_size;
@@ -20,14 +20,14 @@ typedef struct {                     // On crée un type de donnée pour simplif
     double *bias_output;
 } Network;
 
-typedef struct                      // Pareil ce sera pratique pour entrainer le réseau de neurones
+typedef struct                      // same thing here it'll be easier to train the neural network
 {
     double *pixels;
     int label;
 } TrainingExample;
 
 
-// Et on initialise les fonctions qui seront utilisées
+// prototypes of functions
 Network* create_network(int input, int hidden, int output);
 void free_network(Network* net);
 void initialize_weights(Network* net);

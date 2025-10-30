@@ -77,7 +77,7 @@ void create_test_xor() {
     free_network(net);
 }
 
-// Version générique pour n'importe quelle opération binaire
+// Generic version for any binary operation
 void train_binary_operation(const char *name, int truth_table[4]) {
     printf("\n=== Test %s ===\n", name);
     
@@ -94,7 +94,7 @@ void train_binary_operation(const char *name, int truth_table[4]) {
         data[i].label = truth_table[i];
     }
     
-    // Entraînement
+    // Training part
     for (int epoch = 0; epoch < 3000; epoch++) {
         for (int i = 0; i < 4; i++) {
             double *target = calloc(1, sizeof(double));
@@ -151,12 +151,6 @@ int main()
     // Test XNOR (A == B) : -A.-B + A.B
     int xnor_table[4] = {1, 0, 0, 1}; // 0,0→1  0,1→0  1,0→0  1,1→1
     train_binary_operation("XNOR (-A.-B + A.B)", xnor_table);
-
-    // ALWAYS free memory
-    free(hidden);
-    free(output);
-    free_network(net);
-
     
     return 0;
 }
