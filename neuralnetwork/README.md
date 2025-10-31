@@ -18,7 +18,7 @@ This project is a simple neural network implemented in C. It is designed to demo
 To compile the program, run the following command from the project's root directory:
 
 ```bash
-gcc main.c neural_network.c -o output -lm
+make
 ```
 
 This will create an executable file named `output`.
@@ -29,4 +29,10 @@ Once compiled, you can execute the program by running:
 
 ```bash
 ./output
+```
+
+And clean the workspace by running:
+
+```bash
+make clean
 ```
