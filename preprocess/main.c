@@ -15,7 +15,7 @@ G_MODULE_EXPORT void on_btn_export_clicked(GtkButton *button, gpointer user_data
     // check if there's actually an image to export
     if (!data->processed_pixbuf)
     {
-        g_print("Aucune image traitée à exporter.\n");
+        g_print("No processed image to export.\n");
         return;
     }
 
@@ -27,13 +27,13 @@ G_MODULE_EXPORT void on_btn_export_clicked(GtkButton *button, gpointer user_data
 
     if (!rotated_pixbuf)
     {
-        g_print("Erreur durant la création de l'image tournée.\n");
+        g_print("Error during the creation of the rotated image.\n");
         return;
     }
 
     // open a "save as" dialog
     GtkWidget *dialog = gtk_file_chooser_dialog_new(
-        "Enregistrer l'image corrigée",
+        "Save the corrected image",
         GTK_WINDOW(gtk_widget_get_toplevel(GTK_WIDGET(data->drawing_area))),
         GTK_FILE_CHOOSER_ACTION_SAVE,
         "_Cancel", GTK_RESPONSE_CANCEL,
@@ -41,7 +41,7 @@ G_MODULE_EXPORT void on_btn_export_clicked(GtkButton *button, gpointer user_data
         NULL);
 
     // suggest a default filename
-    gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog), "image_corrigee.png");
+    gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog), "corrected_image.png");
 
     gint res = gtk_dialog_run(GTK_DIALOG(dialog));
 
@@ -54,12 +54,12 @@ G_MODULE_EXPORT void on_btn_export_clicked(GtkButton *button, gpointer user_data
         // save as a png to disk
         if (!gdk_pixbuf_save(rotated_pixbuf, filename, "png", &error, NULL))
         {
-            g_printerr("Erreur lors de la sauvegarde : %s\n", error->message);
+            g_printerr("Error while saving: %s\n", error->message);
             g_error_free(error);
         }
         else
         {
-            g_print("Image exportée avec succès vers %s\n", filename);
+            g_print("Image successfully exported to %s\n", filename);
         }
 
         g_free(filename);
@@ -82,7 +82,7 @@ G_MODULE_EXPORT void on_btn_open_clicked(GtkButton *button, gpointer user_data)
     gint res;
 
     dialog = gtk_file_chooser_dialog_new(
-        "Ouvrir une image",
+        "Open an image",
         GTK_WINDOW(gtk_widget_get_toplevel(GTK_WIDGET(button))),
         action,
         "_Cancel",
@@ -112,7 +112,7 @@ G_MODULE_EXPORT void on_btn_open_clicked(GtkButton *button, gpointer user_data)
 
         if (error)
         {
-            g_printerr("Erreur lors du chargement de l'image: %s\n", error->message);
+            g_printerr("Error loading the image: %s\n", error->message);
             g_error_free(error);
         }
         else
