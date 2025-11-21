@@ -144,6 +144,15 @@ G_MODULE_EXPORT void on_scale_rotate_value_changed(GtkRange *range, gpointer use
     gtk_widget_queue_draw(data->drawing_area);
 }
 
+// "clicked" signal for the auto-rotate button
+G_MODULE_EXPORT void on_btn_auto_rotate_clicked(GtkButton *button, gpointer user_data)
+{
+    (void)button;
+    struct PreProcessData *data = (struct PreProcessData *)user_data;
+    
+    auto_rotate(data);
+}
+
 // "draw" signal, executes when the drawing area needs to be redrawn
 G_MODULE_EXPORT gboolean on_drawing_area_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data)
 {
@@ -208,6 +217,7 @@ int main(int argc, char *argv[])
     // get the widgets we need
     window = GTK_WIDGET(gtk_builder_get_object(builder, "main_window"));
     data->drawing_area = GTK_WIDGET(gtk_builder_get_object(builder, "drawing_area"));
+    data->scale_rotate = GTK_WIDGET(gtk_builder_get_object(builder, "scale_rotate"));
 
     // connect signals to our data struct
     gtk_builder_connect_signals(builder, data);

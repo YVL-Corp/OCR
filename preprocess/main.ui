@@ -36,6 +36,18 @@
                             </object>
                         </child>
                         <child>
+                            <object class="GtkButton" id="btn_auto_rotate">
+                                <property name="label" translatable="yes">Auto Rotate</property>
+                                <property name="visible">True</property>
+                                <property name="can-focus">True</property>
+                                <property name="receives-default">True</property>
+                                <signal name="clicked" handler="on_btn_auto_rotate_clicked" swapped="no" />
+                            </object>
+                            <packing>
+                                <property name="position">1</property>
+                            </packing>
+                        </child>
+                        <child>
                             <object class="GtkButton" id="btn_export">
                                 <property name="label" translatable="yes">Export...</property>
                                 <property name="visible">True</property>

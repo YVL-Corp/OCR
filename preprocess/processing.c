@@ -210,3 +210,104 @@ GdkPixbuf *create_rotated_pixbuf(GdkPixbuf *src, double angle_deg)
 
     return rotated_pixbuf;
 }
+
+// helper to calculate variance of an array
+double calculate_variance(long *data, int n)
+{
+    double sum = 0;
+    double sum_sq = 0;
+
+    for (int i = 0; i < n; i++)
+    {
+        sum += data[i];
+        sum_sq += data[i] * data[i];
+    }
+
+    double mean = sum / n;
+    
+    return (sum_sq / n) - (mean * mean);
+}
+
+// detects skew angle using projection profile
+double detect_skew_angle(GdkPixbuf *pixbuf)
+{
+    int width = gdk_pixbuf_get_width(pixbuf);
+    int height = gdk_pixbuf_get_height(pixbuf);
+    int rowstride = gdk_pixbuf_get_rowstride(pixbuf);
+    int n_channels = gdk_pixbuf_get_n_channels(pixbuf);
+    guchar *pixels = gdk_pixbuf_get_pixels(pixbuf);
+
+    double best_angle = 0.0;
+    double max_variance = -1.0;
+
+    // check angles from -45 to 45 degrees
+    for (double angle = -45.0; angle <= 45.0; angle += 0.5)
+    {
+        double rad = angle * G_PI / 180.0;
+        double c = cos(rad);
+        double s = sin(rad);
+
+        // calculate new height bounds to allocate histogram
+        int diag = (int)sqrt(width * width + height * height);
+        int bin_size = diag * 2; // safety margin, center at diag
+        long *histogram = g_malloc0(bin_size * sizeof(long));
+
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                guchar *p = pixels + y * rowstride + x * n_channels;
+                // check if pixel is black (text)
+                // we assume binarized image: 0 is black, 255 is white
+                if (p[0] == 0) 
+                {
+                    // project to y axis of rotated image
+                    int y_prime = (int)(-x * s + y * c);
+                    
+                    // shift to array index
+                    int idx = y_prime + diag;
+                    
+                    if (idx >= 0 && idx < bin_size)
+                    {
+                        histogram[idx]++;
+                    }
+                }
+            }
+        }
+
+        double variance = calculate_variance(histogram, bin_size);
+        
+        if (variance > max_variance)
+        {
+            max_variance = variance;
+            best_angle = angle;
+        }
+
+        g_free(histogram);
+    }
+
+    return best_angle;
+}
+
+void auto_rotate(struct PreProcessData *data)
+{
+    if (!data->processed_pixbuf)
+    {
+        return;
+    }
+
+    g_print("Detecting skew angle...\n");
+    double angle = detect_skew_angle(data->processed_pixbuf);
+    g_print("Detected skew angle: %.2f degrees\n", angle);
+
+    data->rotation_angle = angle;
+    
+    // update the slider
+    if (data->scale_rotate)
+    {
+        gtk_range_set_value(GTK_RANGE(data->scale_rotate), angle);
+    }
+    
+    // redraw
+    gtk_widget_queue_draw(data->drawing_area);
+}
