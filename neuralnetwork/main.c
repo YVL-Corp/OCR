@@ -78,7 +78,30 @@ void create_test_xor() {
 }
 
 // Generic version for any binary operation
-void train_binary_operation(const char *name, int truth_table[4]) {
+void train_binary_operation(const char *name, int truth_table[4], int argc, const char *argv) {
+
+    int nbepochs = 3000;
+    float learning_rate = 0.5;
+    if(argc != 3) 
+    {
+        if (argc == 1)
+        {
+            printf("no amount of epochs specified, training with 3000 epochs by default\n");
+        }
+        if(argc == 2)
+        {
+            printf("no learning rate specified, training with learning rate of 0.5 by default\n");
+        }
+        else
+        {
+            errx(EXIT_FAILURE, "too many arguments");
+        }
+    }
+    else
+    {
+        nbepochs = atoi(argv[1]);
+        learning_rate = atof(argv[2]);
+    }
     printf("\n=== Test %s ===\n", name);
     
     Network *net = create_network(2, 4, 1);
@@ -95,11 +118,11 @@ void train_binary_operation(const char *name, int truth_table[4]) {
     }
     
     // Training part
-    for (int epoch = 0; epoch < 3000; epoch++) {
+    for (int epoch = 0; epoch < nbepochs; epoch++) {
         for (int i = 0; i < 4; i++) {
             double *target = calloc(1, sizeof(double));
             target[0] = data[i].label;
-            backpropagate(net, data[i].pixels, target, 0.5);
+            backpropagate(net, data[i].pixels, target, learning_rate);
             free(target);
         }
     }
@@ -125,7 +148,7 @@ void train_binary_operation(const char *name, int truth_table[4]) {
     free_network(net);
 }
 
-int main() 
+int main(int argc, const char *argv) 
 {
 
     // Test XOR : -A.B + A.-B
@@ -137,20 +160,20 @@ int main()
     // Test AND : A.B
     printf("\n=== Test AND : A.B ===\n");
     int and_table[4] = {0, 0, 0, 1};  // 0,0→0  0,1→0  1,0→0  1,1→1
-    train_binary_operation("AND", and_table);
+    train_binary_operation("AND", and_table, argc, argv);
     printf("Fin du test AND.\n");
     
     // Test OR : A+B
     int or_table[4] = {0, 1, 1, 1};   // 0,0→0  0,1→1  1,0→1  1,1→1
-    train_binary_operation("OR", or_table);
+    train_binary_operation("OR", or_table, argc, argv);
     
     // Test NAND : -(A.B)
     int nand_table[4] = {1, 1, 1, 0}; // 0,0→1  0,1→1  1,0→1  1,1→0
-    train_binary_operation("NAND", nand_table);
+    train_binary_operation("NAND", nand_table, argc, argv);
     
     // Test XNOR (A == B) : -A.-B + A.B
     int xnor_table[4] = {1, 0, 0, 1}; // 0,0→1  0,1→0  1,0→0  1,1→1
-    train_binary_operation("XNOR (-A.-B + A.B)", xnor_table);
+    train_binary_operation("XNOR (-A.-B + A.B)", xnor_table, argc, argv);
     
     return 0;
 }

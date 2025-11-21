@@ -34,7 +34,7 @@ void initialize_weights(Network* net);
 double sigmoid(double x);
 double *forward(Network* net, double *input, double *hidden, double *output);
 void backpropagate(Network* net, double *input, double *target, double learning_rate);
-void train(Network* net, TrainingExample* examples, size_t num_examples, int epochs);
+void train(Network* net, TrainingExample* examples, size_t num_examples, int epochs, float learning_rate);
 
 #endif
 

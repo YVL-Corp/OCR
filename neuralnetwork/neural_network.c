@@ -212,15 +212,17 @@ void backpropagate(Network* net, double *input, double *target, double learning_
     free(output);
 }
 
-void train(Network* net, TrainingExample* examples, size_t num_examples, int epochs)        //Function to train the neural network with datasets (epochs)
+void train(Network* net, TrainingExample* examples, size_t num_examples, int epochs, float learning_rate)        //Function to train the neural network with datasets (epochs)
 {
+
+    printf("Called in the train function...\n");
     for (int epoch = 0; epoch < epochs; epoch++) 
     {
         for (size_t i = 0; i < num_examples; i++) 
         {
             double *target = calloc(net->output_size, sizeof(double)); // Create an array the size of the ouput with values initialized at 0
             target[examples[i].label] = 1.0; // One-hot encoding: the target we want the output to reach is 1.0 as they return a value between O and 1
-            float learning_rate = 0.5;
+            learning_rate = 0.5;
             backpropagate(net, examples[i].pixels, target, learning_rate); // Start backpropagating with a set learning rate
             free(target); // Free allocated memory
         }
@@ -255,11 +257,18 @@ void train(Network* net, TrainingExample* examples, size_t num_examples, int epo
                 }
             }
             free(hidden);
-        free(output);
+            free(output);
 
-        // Calculate and display accuracy in percentages
-        double accuracy = (double)correct / num_examples * 100.0;
-        printf("Epoch %d/%d - Accuracy: %.2f%%\n", epoch + 1, epochs, accuracy);
+            // Calculate and display accuracy in percentages
+            double accuracy = (double)correct / num_examples * 100.0;
+            if (accuracy > 95) 
+            {
+                printf("!!! Reached > 95%% accuracy at %i epochs !!! \n", epoch);
+                printf("Stopping early...");
+                break;
+            }
+        
+            printf("Epoch %d/%d - Accuracy: %.2f%%\n", epoch + 1, epochs, accuracy);
         }
     }
 }
