@@ -300,12 +300,12 @@ void auto_rotate(struct PreProcessData *data)
     double angle = detect_skew_angle(data->processed_pixbuf);
     g_print("Detected skew angle: %.2f degrees\n", angle);
 
-    data->rotation_angle = angle;
+    data->rotation_angle = -angle;
     
     // update the slider
     if (data->scale_rotate)
     {
-        gtk_range_set_value(GTK_RANGE(data->scale_rotate), angle);
+        gtk_range_set_value(GTK_RANGE(data->scale_rotate), -angle);
     }
     
     // redraw
