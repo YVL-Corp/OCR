@@ -96,6 +96,99 @@ int find_otsu_threshold(GdkPixbuf *pixbuf)
     return optimal_threshold;
 }
 
+// apply a simple contrast/brightness adjustment on a pixbuf in-place
+// new_gray = clamp(alpha * (gray - 128) + 128 + beta)
+// alpha > 1.0  => more contrast
+// alpha < 1.0  => less contrast
+// beta  > 0    => brighter
+// beta  < 0    => darker
+void enhance_contrast(GdkPixbuf *pixbuf, double alpha, int beta)
+{
+    if (!pixbuf)
+        return;
+
+    int width = gdk_pixbuf_get_width(pixbuf);
+    int height = gdk_pixbuf_get_height(pixbuf);
+    int rowstride = gdk_pixbuf_get_rowstride(pixbuf);
+    int n_channels = gdk_pixbuf_get_n_channels(pixbuf);
+    guchar *pixels = gdk_pixbuf_get_pixels(pixbuf);
+
+    for (int y = 0; y < height; y++)
+    {
+        for (int x = 0; x < width; x++)
+        {
+            guchar *p = pixels + y * rowstride + x * n_channels;
+
+            // compute current gray level
+            double gray = 0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2];
+
+            // apply contrast / brightness
+            double new_gray = alpha * (gray - 128.0) + 128.0 + beta;
+
+            // clamp to [0, 255]
+            if (new_gray < 0.0)
+            {
+                new_gray = 0.0;
+            }
+
+            if (new_gray > 255.0)
+            {
+                new_gray = 255.0;
+            }
+
+            guchar g = (guchar)new_gray;
+
+            // write back as a gray RGB pixel
+            p[0] = p[1] = p[2] = g;
+        }
+    }
+}
+
+void remove_isolated_noise(GdkPixbuf *pixbuf)
+{
+    int width = gdk_pixbuf_get_width(pixbuf);
+    int height = gdk_pixbuf_get_height(pixbuf);
+    int rowstride = gdk_pixbuf_get_rowstride(pixbuf);
+    int n_channels = gdk_pixbuf_get_n_channels(pixbuf);
+    guchar *pixels = gdk_pixbuf_get_pixels(pixbuf);
+
+    guchar *copy = g_memdup2(pixels, rowstride * height);
+
+    for (int y = 1; y < height - 1; y++)
+    {
+        for (int x = 1; x < width - 1; x++)
+        {
+            guchar *p = copy + y * rowstride + x * n_channels;
+
+            if (p[0] == 0)
+            {
+                int black_neighbors = 0;
+
+                for (int j = -1; j <= 1; j++)
+                {
+                    for (int i = -1; i <= 1; i++)
+                    {
+                        if (i == 0 && j == 0)
+                            continue;
+
+                        guchar *q = copy + (y + j) * rowstride + (x + i) * n_channels;
+
+                        if (q[0] == 0)
+                            black_neighbors++;
+                    }
+                }
+                if (black_neighbors <= 1)
+                {
+                    guchar *dst = pixels + y * rowstride + x * n_channels;
+                    dst[0] = dst[1] = dst[2] = 255;
+                }
+            }
+        }
+    }
+
+    g_free(copy);
+}
+
 // applies a grayscale and threshold filter (binarization)
 void apply_bw_filter(struct PreProcessData *data)
 {
@@ -111,12 +204,15 @@ void apply_bw_filter(struct PreProcessData *data)
         g_object_unref(data->processed_pixbuf);
     }
 
+    // make a copy of the original to work on
+    data->processed_pixbuf = gdk_pixbuf_copy(data->original_pixbuf);
+
+    // reinforce contrast on the grayscale image
+    // enhance_contrast(data->processed_pixbuf, 1.3, 0);
+
     // calculate the dynamic threshold based on the original image
     int threshold = find_otsu_threshold(data->original_pixbuf);
     g_print("Otsu's optimal threshold: %d\n", threshold);
-
-    // make a copy of the original to work on
-    data->processed_pixbuf = gdk_pixbuf_copy(data->original_pixbuf);
 
     // get image info
     guchar *pixels = gdk_pixbuf_get_pixels(data->processed_pixbuf);
@@ -138,10 +234,10 @@ void apply_bw_filter(struct PreProcessData *data)
         for (int x = 0; x < width; x++)
         {
             guchar *p = pixels + y * rowstride + x * n_channels;
-            
+
             // convert to grayscale using standard luminosity formula
             guchar gray = 0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2];
-            
+
             if (gray > threshold)
             {
                 // if the pixel is lighter than the threshold, make it white
@@ -154,6 +250,8 @@ void apply_bw_filter(struct PreProcessData *data)
             }
         }
     }
+
+    remove_isolated_noise(data->processed_pixbuf);
 }
 
 // create the rotated pixbuf and export it
@@ -224,7 +322,7 @@ double calculate_variance(long *data, int n)
     }
 
     double mean = sum / n;
-    
+
     return (sum_sq / n) - (mean * mean);
 }
 
@@ -259,14 +357,14 @@ double detect_skew_angle(GdkPixbuf *pixbuf)
                 guchar *p = pixels + y * rowstride + x * n_channels;
                 // check if pixel is black (text)
                 // we assume binarized image: 0 is black, 255 is white
-                if (p[0] == 0) 
+                if (p[0] == 0)
                 {
                     // project to y axis of rotated image
                     int y_prime = (int)(-x * s + y * c);
-                    
+
                     // shift to array index
                     int idx = y_prime + diag;
-                    
+
                     if (idx >= 0 && idx < bin_size)
                     {
                         histogram[idx]++;
@@ -276,7 +374,7 @@ double detect_skew_angle(GdkPixbuf *pixbuf)
         }
 
         double variance = calculate_variance(histogram, bin_size);
-        
+
         if (variance > max_variance)
         {
             max_variance = variance;
@@ -301,13 +399,13 @@ void auto_rotate(struct PreProcessData *data)
     g_print("Detected skew angle: %.2f degrees\n", angle);
 
     data->rotation_angle = -angle;
-    
+
     // update the slider
     if (data->scale_rotate)
     {
         gtk_range_set_value(GTK_RANGE(data->scale_rotate), -angle);
     }
-    
+
     // redraw
     gtk_widget_queue_draw(data->drawing_area);
 }
