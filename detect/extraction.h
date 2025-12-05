@@ -3,22 +3,30 @@
 
 #include <gdk-pixbuf/gdk-pixbuf.h>
 
-// Represents a single continuous bar (horizontal or vertical)
-// found in an image histogram.
+// Structure représentant une zone rectangulaire (mot ou case)
 typedef struct {
-    int start;      // Start coordinate (x or y)
-    int end;        // End coordinate (x or y)
-    int thickness;  // Length of the bar in pixels
-} Bar;
+    int x, y, width, height;
+} Box;
 
-// A dynamic list to hold an array of Bar structs.
+// Structure principale
 typedef struct {
-    Bar *bars;      // Pointer to the array of bars
-    int count;      // Number of bars in the array
-} BarList;
+    // --- Infos Grille ---
+    int grid_x, grid_y, grid_width, grid_height;
+    int rows, cols;
+    
+    // NOUVEAU : Tableau stockant la position exacte de CHAQUE case
+    // Taille = rows * cols. Accès : grid_cells[row * cols + col]
+    Box *grid_cells; 
+    
+    // --- Infos Liste de mots ---
+    int has_wordlist;
+    int list_x, list_y, list_width, list_height;
+    Box *words;    // Tableau des mots détectés
+    int word_count;
+    
+} PageLayout;
 
-// Main function to analyze a GdkPixbuf, detect the primary grid,
-// and find its internal cells.
-void detect_grid_from_pixbuf(GdkPixbuf *pixbuf);
+PageLayout* detect_layout_from_pixbuf(GdkPixbuf *pixbuf);
+void free_page_layout(PageLayout *layout);
 
-#endif // EXTRACTION_H_
+#endif

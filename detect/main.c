@@ -1,39 +1,32 @@
 #include <stdio.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
-#include "extraction.h" // Include our detection module
+#include "extraction.h"
+#include "image_export.h"
 
-// Main entry point for the program.
-// Loads an image from the command line argument and passes it to the
-// grid detector.
 int main(int argc, char **argv) {
-    // 1. Check for command line argument
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <image_path>\n", argv[0]);
         return 1;
     }
 
-    // 2. Load the image using GdkPixbuf
-    GError *error = NULL;
-    GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file(argv[1], &error);
+    GError *err = NULL;
+    GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file(argv[1], &err);
+    if (!pixbuf) { fprintf(stderr, "%s\n", err->message); return 1; }
 
-    // 3. Handle loading errors
-    if (error != NULL) {
-        fprintf(stderr, "Unable to load image %s: %s\n", 
-                argv[1], error->message);
-        g_error_free(error);
-        return 1;
+    printf("Image: %s (%dx%d)\n", argv[1], gdk_pixbuf_get_width(pixbuf), gdk_pixbuf_get_height(pixbuf));
+
+    PageLayout *layout = detect_layout_from_pixbuf(pixbuf);
+    if (layout) {
+        printf("\n=== RAPPORT ===\n");
+        printf("GRILLE : %d lignes x %d colonnes\n", layout->rows, layout->cols);
+        printf("LISTE  : %d mots trouvés\n", layout->word_count);
+
+        printf("\n=== EXPORT DES IMAGES ===\n");
+        export_layout_to_files(pixbuf, layout, "output");
+        printf("Terminé. Voir le dossier 'output'.\n");
+        
+        free_page_layout(layout);
     }
-    
-    printf("Analyzing image: %s (%d x %d)\n", 
-           argv[1], 
-           gdk_pixbuf_get_width(pixbuf), 
-           gdk_pixbuf_get_height(pixbuf));
-    
-    // 4. Call the main detection function from our module
-    detect_grid_from_pixbuf(pixbuf);
-    
-    // 5. Clean up
-    g_object_unref(pixbuf); 
-
+    g_object_unref(pixbuf);
     return 0;
 }

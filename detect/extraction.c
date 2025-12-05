@@ -2,275 +2,219 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-// --- Thresholds ---
-#define BLACK_THRESHOLD 750             // Sum of R+G+B to be considered "black"
-#define BLOB_THRESHOLD 10               // Min pixel count to detect a "blob" in Pass 1
-#define GRID_LINE_THRESHOLD_PERCENT 0.7 // % of grid width/height a line must fill
-                                        // to be considered a "grid line" (not text)
+// --- Seuils ---
+#define BLACK_THRESHOLD 700             
+#define BLOB_MIN_PIXELS 5               
+#define MERGE_THRESHOLD_X 45            
+#define MERGE_THRESHOLD_Y 8             
+#define GRID_LINE_THRESHOLD_PERCENT 0.5 
+#define MIN_LIST_WIDTH_RATIO 0.10       
+#define TEXT_LINE_MIN_HEIGHT 8          
 
-// --- Private Function Prototypes ---
-static void free_bar_list(BarList *list);
-static BarList* analyze_bars(int *histogram, int length, int threshold);
-static Bar find_widest_bar(BarList *list);
-static void print_grid_bounding_box(int x0, int y0, int x1, int y1);
-static void find_grid_cells(BarList *h_bars, BarList *v_bars);
+// --- Structures Internes ---
+typedef struct { int start; int end; int thickness; } Bar;
+typedef struct { Bar *bars; int count; } BarList;
 
-
-// Safely frees the memory allocated for a BarList.
+// --- Fonctions Utilitaires ---
 static void free_bar_list(BarList *list) {
-    if (list) {
-        free(list->bars);
-        free(list);
-    }
+    if (list) { free(list->bars); free(list); }
 }
 
-// Analyzes a 1D histogram array to find continuous bars of
-// values above a given threshold.
-// This runs in two passes: first to count bars for allocation,
-// second to fill the bar data.
+static int compare_bars(const void *a, const void *b) {
+    return ((Bar*)b)->thickness - ((Bar*)a)->thickness;
+}
+
 static BarList* analyze_bars(int *histogram, int length, int threshold) {
-    int count = 0;
-    int in_bar = 0;
-
-    // Pass 1: Count the bars to allocate the exact amount of memory
+    int count = 0, in_bar = 0;
     for (int i = 0; i < length; i++) {
-        if (histogram[i] > threshold) {
-            if (!in_bar) {
-                in_bar = 1;
-                count++; // Only count the beginning of a new bar
-            }
-        } else {
-            if (in_bar) {
-                in_bar = 0;
-            }
-        }
+        if (histogram[i] > threshold) { if (!in_bar) { in_bar = 1; count++; } }
+        else { in_bar = 0; }
     }
-    
-    // If no bars found, return an empty list
-    if (count == 0) {
-        return (BarList*)calloc(1, sizeof(BarList));
-    }
+    if (count == 0) return (BarList*)calloc(1, sizeof(BarList));
 
-    // Allocate memory for the list and the array of bars
     BarList *list = (BarList*)malloc(sizeof(BarList));
-    if (!list) return NULL;
     list->bars = (Bar*)malloc(count * sizeof(Bar));
-    if (!list->bars) { free(list); return NULL; }
     list->count = count;
     
-    // Pass 2: Fill the BarList with start/end coordinates
-    in_bar = 0;
-    int current_bar_index = -1;
-    int bar_start = 0;
+    in_bar = 0; int idx = -1, start = 0;
     for (int i = 0; i < length; i++) {
         if (histogram[i] > threshold) {
-            if (!in_bar) {
-                // We are entering a new bar
-                in_bar = 1;
-                bar_start = i;
-                current_bar_index++;
-            }
+            if (!in_bar) { in_bar = 1; start = i; idx++; }
         } else {
             if (in_bar) {
-                // We are exiting a bar
                 in_bar = 0;
-                int bar_end = i - 1;
-                list->bars[current_bar_index].start = bar_start;
-                list->bars[current_bar_index].end = bar_end;
-                list->bars[current_bar_index].thickness = (bar_end - bar_start) + 1;
+                list->bars[idx].start = start;
+                list->bars[idx].end = i - 1;
+                list->bars[idx].thickness = i - start;
             }
         }
     }
-    // Handle edge case: bar touches the end of the image
     if (in_bar) {
-        int bar_end = length - 1;
-        list->bars[current_bar_index].start = bar_start;
-        list->bars[current_bar_index].end = bar_end;
-        list->bars[current_bar_index].thickness = (bar_end - bar_start) + 1;
+        list->bars[idx].start = start;
+        list->bars[idx].end = length - 1;
+        list->bars[idx].thickness = length - start;
     }
     return list;
 }
 
-// Finds the bar with the largest 'thickness' in a BarList.
-// Used to identify the grid from other "blobs" (like a word list).
-static Bar find_widest_bar(BarList *list) {
-    Bar widest = {0, 0, 0};
-    if (!list || list->count == 0) {
-        return widest;
-    }
+static BarList* merge_bar_list(BarList *original, int merge_gap) {
+    if (!original || original->count == 0) return original;
+    BarList *merged = (BarList*)malloc(sizeof(BarList));
+    merged->bars = (Bar*)malloc(original->count * sizeof(Bar));
     
-    widest = list->bars[0];
-    for (int i = 1; i < list->count; i++) {
-        if (list->bars[i].thickness > widest.thickness) {
-            widest = list->bars[i];
+    int m_idx = 0;
+    merged->bars[0] = original->bars[0];
+
+    for (int i = 1; i < original->count; i++) {
+        Bar *curr = &merged->bars[m_idx];
+        Bar *next = &original->bars[i];
+
+        if ((next->start - curr->end) <= merge_gap) {
+            curr->end = next->end;
+            curr->thickness = (curr->end - curr->start) + 1;
+        } else {
+            m_idx++; merged->bars[m_idx] = *next;
         }
     }
-    return widest;
+    merged->count = m_idx + 1;
+    free(original->bars); free(original);
+    return merged;
 }
 
-// Prints the final detected bounding box of the grid.
-static void print_grid_bounding_box(int x0, int y0, int x1, int y1) {
-    printf("\n--- Grid Position Detection ---\n");
-    printf("GRID BOUNDING BOX (X0, Y0) -> (X1, Y1) : (%d, %d) -> (%d, %d)\n", x0, y0, x1, y1);
-    printf("Width: %d px, Height: %d px\n", (x1-x0)+1, (y1-y0)+1);
-}
-
-// Deduces and prints the coordinates of each cell (the empty spaces)
-// based on the gaps *between* the internal grid bars.
-static void find_grid_cells(BarList *h_bars, BarList *v_bars) {
-    printf("\n--- Grid Cell Detection ---\n");
-
-    // We need N+1 bars to define N cells
-    int num_cell_rows = h_bars->count - 1;
-    int num_cell_cols = v_bars->count - 1;
-    
-    if (num_cell_rows <= 0 || num_cell_cols <= 0) {
-        printf("Not enough bars found to deduce cells!\n");
-        return;
-    }
-
-    printf("Detected Grid: %d rows x %d columns\n", num_cell_rows, num_cell_cols);
-
-    // Iterate over the gaps between horizontal bars
-    for (int i = 0; i < num_cell_rows; i++) {
-        int y0 = h_bars->bars[i].end + 1;
-        int y1 = h_bars->bars[i+1].start - 1;
-
-        // Iterate over the gaps between vertical bars
-        for (int j = 0; j < num_cell_cols; j++) {
-            int x0 = v_bars->bars[j].end + 1;
-            int x1 = v_bars->bars[j+1].start - 1;
-            
-            printf("  Cell (%d, %d) -> (X: %d to %d, Y: %d to %d)\n", 
-                   i, j, x0, x1, y0, y1);
-        }
-    }
-}
-
-// Main detection logic. Runs a 3-pass analysis.
-void detect_grid_from_pixbuf(GdkPixbuf *pixbuf) {
-    int width = gdk_pixbuf_get_width(pixbuf);
-    int height = gdk_pixbuf_get_height(pixbuf);
-    
+static void detect_words_in_list(GdkPixbuf *pixbuf, PageLayout *layout) {
+    if (!layout->has_wordlist) return;
+    int h = gdk_pixbuf_get_height(pixbuf);
+    int rs = gdk_pixbuf_get_rowstride(pixbuf);
     guchar *pixels = gdk_pixbuf_get_pixels(pixbuf);
-    int n_channels = gdk_pixbuf_get_n_channels(pixbuf);
-    int rowstride = gdk_pixbuf_get_rowstride(pixbuf);
+    int nc = gdk_pixbuf_get_n_channels(pixbuf);
 
-    // --- PASS 1: Global X-Axis Analysis ---
-    // Find all vertical "blobs" in the image (grid, word list, etc.)
-    printf("--- PASS 1: Global X-Axis Analysis ---\n");
-    int *global_histo_x = (int *)calloc(width, sizeof(int));
-    for (int y = 0; y < height; y++) {
-        guchar *row = pixels + y * rowstride;
-        for (int x = 0; x < width; x++) {
-            guchar *p = row + x * n_channels;
-            if ((p[0] + p[1] + p[2]) < BLACK_THRESHOLD) {
-                global_histo_x[x]++;
+    int *histo = (int *)calloc(h, sizeof(int));
+    int end_x = layout->list_x + layout->list_width;
+    if (end_x >= gdk_pixbuf_get_width(pixbuf)) end_x = gdk_pixbuf_get_width(pixbuf) - 1;
+
+    for (int y = 0; y < h; y++) {
+        guchar *row = pixels + y * rs;
+        int blacks = 0;
+        for (int x = layout->list_x; x <= end_x; x++) {
+            if ((row[x*nc] + row[x*nc+1] + row[x*nc+2]) < BLACK_THRESHOLD) blacks++;
+        }
+        if (blacks > 2) histo[y] = blacks;
+    }
+
+    BarList *raw = analyze_bars(histo, h, 0);
+    BarList *words = merge_bar_list(raw, MERGE_THRESHOLD_Y);
+
+    if (words->count > 0) {
+        int valid = 0;
+        for(int i=0; i<words->count; i++) if(words->bars[i].thickness >= TEXT_LINE_MIN_HEIGHT) valid++;
+        
+        layout->word_count = valid;
+        layout->words = (Box*)malloc(valid * sizeof(Box));
+        int idx = 0;
+        for(int i=0; i<words->count; i++) {
+            if(words->bars[i].thickness >= TEXT_LINE_MIN_HEIGHT) {
+                layout->words[idx].x = layout->list_x;
+                layout->words[idx].width = layout->list_width;
+                layout->words[idx].y = words->bars[i].start;
+                layout->words[idx].height = words->bars[i].thickness;
+                idx++;
             }
         }
     }
-    BarList *vertical_blobs = analyze_bars(global_histo_x, width, BLOB_THRESHOLD);
-    
-    // Assume the grid is the widest blob
-    Bar grid_blob = find_widest_bar(vertical_blobs);
-    
-    if (grid_blob.thickness == 0) {
-        fprintf(stderr, "Error: Could not find grid blob.\n");
-        free(global_histo_x);
-        free_bar_list(vertical_blobs);
-        return;
+    free(histo); free_bar_list(words);
+}
+
+void free_page_layout(PageLayout *layout) {
+    if (layout) { 
+        if (layout->words) free(layout->words); 
+        if (layout->grid_cells) free(layout->grid_cells);
+        free(layout); 
     }
-    
-    int grid_X0 = grid_blob.start;
-    int grid_X1 = grid_blob.end;
-    int grid_width = (grid_X1 - grid_X0) + 1;
-    
-    printf("Grid blob found: X from %d to %d (width %d px)\n", grid_X0, grid_X1, grid_width);
-    free(global_histo_x);
-    free_bar_list(vertical_blobs);
+}
 
+PageLayout* detect_layout_from_pixbuf(GdkPixbuf *pixbuf) {
+    PageLayout *layout = (PageLayout*)calloc(1, sizeof(PageLayout));
+    int w = gdk_pixbuf_get_width(pixbuf);
+    int h = gdk_pixbuf_get_height(pixbuf);
+    guchar *pixels = gdk_pixbuf_get_pixels(pixbuf);
+    int rs = gdk_pixbuf_get_rowstride(pixbuf);
+    int nc = gdk_pixbuf_get_n_channels(pixbuf);
 
-    // --- PASS 2: Y-Axis Analysis (Grid Area) ---
-    // Find horizontal grid lines, but *only* within the grid's X-bounds.
-    printf("--- PASS 2: Y-Axis Analysis (Grid Area) ---\n");
-    int *internal_histo_y = (int *)calloc(height, sizeof(int));
-    for (int y = 0; y < height; y++) {
-        guchar *row = pixels + y * rowstride;
-        for (int x = grid_X0; x <= grid_X1; x++) {
-            guchar *p = row + x * n_channels;
-            if ((p[0] + p[1] + p[2]) < BLACK_THRESHOLD) {
-                internal_histo_y[y]++;
+    // --- PASS 1: Global X ---
+    int *gx = (int*)calloc(w, sizeof(int));
+    for(int y=0; y<h; y++) {
+        guchar *row = pixels + y*rs;
+        for(int x=0; x<w; x++) if((row[x*nc]+row[x*nc+1]+row[x*nc+2]) < BLACK_THRESHOLD) gx[x]++;
+    }
+    BarList *xb = merge_bar_list(analyze_bars(gx, w, BLOB_MIN_PIXELS), MERGE_THRESHOLD_X);
+    free(gx);
+    
+    if (xb->count == 0) { free_bar_list(xb); return layout; }
+    qsort(xb->bars, xb->count, sizeof(Bar), compare_bars);
+    
+    layout->grid_x = xb->bars[0].start;
+    layout->grid_width = xb->bars[0].thickness;
+    if (xb->count > 1 && xb->bars[1].thickness > layout->grid_width * MIN_LIST_WIDTH_RATIO) {
+        layout->has_wordlist = 1;
+        layout->list_x = xb->bars[1].start;
+        layout->list_width = xb->bars[1].thickness;
+    }
+    free_bar_list(xb);
+
+    // --- PASS 2: Grid Rows (Y) ---
+    int *gy = (int*)calloc(h, sizeof(int));
+    for(int y=0; y<h; y++) {
+        guchar *row = pixels + y*rs;
+        for(int x=layout->grid_x; x<layout->grid_x+layout->grid_width; x++)
+            if((row[x*nc]+row[x*nc+1]+row[x*nc+2]) < BLACK_THRESHOLD) gy[y]++;
+    }
+    BarList *yb = analyze_bars(gy, h, (int)(layout->grid_width * GRID_LINE_THRESHOLD_PERCENT));
+    free(gy);
+
+    layout->grid_y = yb->bars[0].start;
+    layout->grid_height = (yb->bars[yb->count-1].end - layout->grid_y) + 1;
+    layout->rows = yb->count - 1;
+
+    // --- PASS 3: Grid Cols (X) ---
+    int *gix = (int*)calloc(w, sizeof(int));
+    for(int y=layout->grid_y; y<layout->grid_y+layout->grid_height; y++) {
+        guchar *row = pixels + y*rs;
+        for(int x=layout->grid_x; x<layout->grid_x+layout->grid_width; x++)
+            if((row[x*nc]+row[x*nc+1]+row[x*nc+2]) < BLACK_THRESHOLD) gix[x]++;
+    }
+    BarList *xib = analyze_bars(gix, w, (int)(layout->grid_height * GRID_LINE_THRESHOLD_PERCENT));
+    free(gix);
+
+    layout->cols = xib->count - 1;
+
+    // --- CONSTRUCTION PRÉCISE DES CELLULES ---
+    // On utilise les barres détectées pour définir les frontières exactes
+    if (layout->rows > 0 && layout->cols > 0) {
+        layout->grid_cells = (Box*)malloc(layout->rows * layout->cols * sizeof(Box));
+        
+        for (int r = 0; r < layout->rows; r++) {
+            // La case est située ENTRE la barre r et la barre r+1
+            int y0 = yb->bars[r].end + 1; // Juste après la ligne du haut
+            int y1 = yb->bars[r+1].start - 1; // Juste avant la ligne du bas
+            int h_cell = y1 - y0 + 1;
+
+            for (int c = 0; c < layout->cols; c++) {
+                int x0 = xib->bars[c].end + 1; // Juste après la ligne de gauche
+                int x1 = xib->bars[c+1].start - 1; // Juste avant la ligne de droite
+                int w_cell = x1 - x0 + 1;
+
+                int index = r * layout->cols + c;
+                layout->grid_cells[index].x = x0;
+                layout->grid_cells[index].y = y0;
+                layout->grid_cells[index].width = w_cell;
+                layout->grid_cells[index].height = h_cell;
             }
         }
     }
-    
-    // Use a dynamic threshold to distinguish real grid lines from text lines
-    int h_grid_threshold = (int)(grid_width * GRID_LINE_THRESHOLD_PERCENT);
-    printf("Dynamic Y-axis threshold (bars): %d\n", h_grid_threshold);
-    
-    BarList *internal_h_bars = analyze_bars(internal_histo_y, height, h_grid_threshold);
-    free(internal_histo_y);
-    
-    if (internal_h_bars->count == 0) {
-        fprintf(stderr, "Error: Could not find internal horizontal bars.\n");
-        free_bar_list(internal_h_bars);
-        return;
-    }
 
-    // Get the grid's Y-bounds from the first and last horizontal bar
-    int grid_Y0 = internal_h_bars->bars[0].start;
-    int grid_Y1 = internal_h_bars->bars[internal_h_bars->count - 1].end;
-    int grid_height = (grid_Y1 - grid_Y0) + 1;
-    
-    
-    // --- PASS 3: X-Axis Analysis (Grid Area) ---
-    // Find vertical grid lines, but *only* within the grid's X and Y bounds.
-    printf("--- PASS 3: X-Axis Analysis (Grid Area) ---\n");
-    int *internal_histo_x = (int *)calloc(width, sizeof(int));
-    for (int y = grid_Y0; y <= grid_Y1; y++) { 
-        guchar *row = pixels + y * rowstride;
-        for (int x = grid_X0; x <= grid_X1; x++) {
-            guchar *p = row + x * n_channels;
-            if ((p[0] + p[1] + p[2]) < BLACK_THRESHOLD) {
-                internal_histo_x[x]++; 
-            }
-        }
-    }
-    
-    // Use a dynamic threshold based on grid height
-    int v_grid_threshold = (int)(grid_height * GRID_LINE_THRESHOLD_PERCENT);
-    printf("Dynamic X-axis threshold (bars): %d\n", v_grid_threshold);
+    free_bar_list(yb);
+    free_bar_list(xib);
 
-    BarList *internal_v_bars = analyze_bars(internal_histo_x, width, v_grid_threshold);
-    free(internal_histo_x);
-
-    if (internal_v_bars->count == 0) {
-        fprintf(stderr, "Error: Could not find internal vertical bars.\n");
-        free_bar_list(internal_h_bars);
-        free_bar_list(internal_v_bars);
-        return;
-    }
-
-    // RESULTS
-    // Print the internal bars found
-    printf("\n--- Internal Horizontal Bars (Y) ---\n");
-    for (int i = 0; i < internal_h_bars->count; i++) {
-        Bar *b = &internal_h_bars->bars[i];
-        printf("HORIZONTAL BAR [%d]: Start_Y=%d, End_Y=%d, Thickness=%d px\n",
-               i, b->start, b->end, b->thickness);
-    }
-    printf("\n--- Internal Vertical Bars (X) ---\n");
-    for (int i = 0; i < internal_v_bars->count; i++) {
-        Bar *b = &internal_v_bars->bars[i];
-        printf("VERTICAL BAR [%d]: Start_X=%d, End_X=%d, Thickness=%d px\n",
-               i, b->start, b->end, b->thickness);
-    }
-
-    // Print the final bounding box and cell coordinates
-    print_grid_bounding_box(grid_X0, grid_Y0, grid_X1, grid_Y1);
-    find_grid_cells(internal_h_bars, internal_v_bars);
-
-    // Final cleanup
-    free_bar_list(internal_h_bars);
-    free_bar_list(internal_v_bars);
+    detect_words_in_list(pixbuf, layout);
+    return layout;
 }
