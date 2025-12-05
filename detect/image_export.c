@@ -15,6 +15,8 @@
 // Cela nous aide à deviner combien de lettres sont collées.
 #define EXPECTED_LETTER_RATIO 0.70
 
+#define OUTPUT_SIZE 20
+
 typedef struct {
     int x, y, width, height;
     int area;
@@ -28,15 +30,62 @@ static void create_directory(const char *path) {
 static void save_subimage(GdkPixbuf *source, int x, int y, int w, int h, const char *filepath) {
     int img_w = gdk_pixbuf_get_width(source);
     int img_h = gdk_pixbuf_get_height(source);
+    
+    // 1. Safety Checks
     if (x < 0) x = 0; if (y < 0) y = 0;
     if (x + w > img_w) w = img_w - x;
     if (y + h > img_h) h = img_h - y;
     if (w <= 0 || h <= 0) return;
 
-    GdkPixbuf *sub = gdk_pixbuf_new_subpixbuf(source, x, y, w, h);
-    gdk_pixbuf_save(sub, filepath, "png", NULL, NULL);
-    g_object_unref(sub);
+    // 2. Extraire la lettre brute (taille d'origine)
+    GdkPixbuf *extracted = gdk_pixbuf_new_subpixbuf(source, x, y, w, h);
+    
+    // 3. Créer le canvas carré blanc de 20x20
+    // (FALSE = pas de transparence alpha, 8 bits par canal)
+    GdkPixbuf *canvas = gdk_pixbuf_new(GDK_COLORSPACE_RGB, FALSE, 8, OUTPUT_SIZE, OUTPUT_SIZE);
+    
+    // Remplir de Blanc (0xFFFFFFFF = R,G,B,A tout à max)
+    gdk_pixbuf_fill(canvas, 0xFFFFFFFF);
+
+    // 4. Calculer le ratio pour redimensionner SANS déformer
+    // On veut que ça rentre dans 20px, soit en largeur, soit en hauteur.
+    double scale_w = (double)OUTPUT_SIZE / w;
+    double scale_h = (double)OUTPUT_SIZE / h;
+    
+    // On prend le plus petit ratio pour que tout rentre
+    double scale = (scale_w < scale_h) ? scale_w : scale_h;
+    
+    // Nouvelles dimensions de la lettre
+    int new_w = (int)(w * scale);
+    int new_h = (int)(h * scale);
+    
+    // Garde-fou (évite dimension 0)
+    if (new_w < 1) new_w = 1;
+    if (new_h < 1) new_h = 1;
+
+    // 5. Calculer la position pour CENTRER
+    int offset_x = (OUTPUT_SIZE - new_w) / 2;
+    int offset_y = (OUTPUT_SIZE - new_h) / 2;
+
+    // 6. Coller la lettre redimensionnée sur le canvas blanc
+    // gdk_pixbuf_scale(src, dest, dest_x, dest_y, dest_w, dest_h, offset_x, offset_y, scale_x, scale_y, interp)
+    gdk_pixbuf_scale(extracted, canvas,
+                     offset_x, offset_y,
+                     new_w, new_h,
+                     offset_x, offset_y,
+                     scale, scale,
+                     GDK_INTERP_BILINEAR);
+
+    // 7. Sauvegarder
+    if (!gdk_pixbuf_save(canvas, filepath, "bmp", NULL, NULL)) {
+        fprintf(stderr, "Error saving: %s\n", filepath);
+    }
+    
+    g_object_unref(canvas);
+    g_object_unref(extracted);
 }
+
+
 
 static void flood_fill(guchar *pixels, bool *visited, int w, int h, int rs, int nc, 
                        int x, int y, int *min_x, int *max_x, int *min_y, int *max_y, int *area) {
@@ -175,14 +224,14 @@ static void segment_and_save_word(GdkPixbuf *source, Box word, const char *word_
                 int cut_x = find_best_split_col(blob_histo, search_start, search_end);
 
                 // Sauvegarde du morceau
-                snprintf(path, 512, "%s/letter_%d.png", word_folder, letter_idx++);
+                snprintf(path, 512, "%s/letter_%d.bmp", word_folder, letter_idx++);
                 save_subimage(source, word.x + b.x + current_x, word.y + b.y, cut_x - current_x, b.height, path);
                 
                 current_x = cut_x;
             }
             
             // Sauvegarde du dernier morceau (ou du seul morceau si pas de découpe)
-            snprintf(path, 512, "%s/letter_%d.png", word_folder, letter_idx++);
+            snprintf(path, 512, "%s/letter_%d.bmp", word_folder, letter_idx++);
             save_subimage(source, word.x + b.x + current_x, word.y + b.y, b.width - current_x, b.height, path);
 
             free(blob_histo);
@@ -205,7 +254,7 @@ void export_layout_to_files(GdkPixbuf *pixbuf, PageLayout *layout, const char *o
     for (int r = 0; r < layout->rows; r++) {
         for (int c = 0; c < layout->cols; c++) {
             Box cell = layout->grid_cells[r * layout->cols + c];
-            snprintf(path, 512, "%s/grid/%d_%d.png", output_folder, c, r);
+            snprintf(path, 512, "%s/grid/%d_%d.bmp", output_folder, c, r);
             save_subimage(pixbuf, cell.x, cell.y, cell.width, cell.height, path);
         }
     }
