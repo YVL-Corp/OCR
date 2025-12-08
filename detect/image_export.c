@@ -21,7 +21,7 @@
 #define EXPECTED_LETTER_RATIO 0.70
 
 // Final output image size (20x20 pixels) for the Neural Network.
-#define OUTPUT_SIZE 20
+#define OUTPUT_SIZE 30
 
 // Padding applied to letters extracted from the word list.
 // Since list letters are detected via flood-fill (tight fit), we add padding
