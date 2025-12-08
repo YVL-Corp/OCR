@@ -27,7 +27,7 @@
 // Since list letters are detected via flood-fill (tight fit), we add padding
 // so they visually match the grid letters (which have natural cell margins).
 // 4px padding -> Letter will be max 12px high inside the 20px box.
-#define LIST_PADDING 4 
+#define LIST_PADDING 7 
 
 // Internal structure to represent a detected connected component
 typedef struct {
