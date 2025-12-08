@@ -22,4 +22,4 @@ run: all
 clean:
 	rm -f $(EXE) $(OBJS)
 	# Optional: remove output folder on clean
-	# rm -rf output
+	rm -rf output
