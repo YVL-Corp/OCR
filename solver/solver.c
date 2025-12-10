@@ -1,131 +1,211 @@
 #include <stdio.h>
+#include <stdlib.h> 
 #include <string.h>
-#include "solver.h"
 #include <err.h>
+#include <ctype.h> 
+#include "solver.h" 
 
+// Directions de recherche (identiques)
 int directions[8][2] = {
-	// check the directions
-	// right, bottom right, bottom, bottom left, left, top left, top, top right
-	{0, 1},   
-	{1, 1},   
-	{1, 0},   
-	{1, -1},  
-	{0, -1},  
-	{-1, -1}, 
-	{-1, 0},  
-	{-1, 1}   
+    {0, 1}, 
+    {1, 1}, 
+    {1, 0}, 
+    {1, -1},
+    {0, -1},
+    {-1, -1},
+    {-1, 0},
+    {-1, 1}
 };
 
-Position* solver(char grid[ROWS][COLS], char word[])
+// Search a word in the grid 
+Position* solver(char** grid, int rows, int cols, const char word[])
 {
+    
+    Position* positions = (Position*)malloc(sizeof(Position) * 2);
+    if (positions == NULL)
+        err(1, "malloc failed");
 
-    static Position positions[2]; 
-    int len = strlen(word); // calculate the length of the word to verify each lette   
-	for (int i = 0; i < ROWS; i++) {
-        for (int j = 0; j < COLS; j++) {
+    int len = strlen(word);
+    
+    // Exit if the word lengh is zero
+    if (len == 0) {
+        free(positions);
+        return NULL;
+    }
 
-            //check the first lette
-	    if (grid[i][j] == word[0]) {
-                for (int d = 0; d < 8; d++) {
-                    // check the next letters for each direction
-                    int k;
-                    for (k = 1; k < len; k++) {
-                        // calculate each position with direction
-                        int newX = i + k * directions[d][0];
-                        int newY = j + k * directions[d][1];
-                        // check for the right letter and overflow
-                        if (newX < 0 || newX >= ROWS || newY < 0 ||
-					newY >= COLS || grid[newX][newY] != word[k]) {
-                            break;
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            
+            // search in the different directions
+            for (int d = 0; d < 8; d++) {
+                
+                int errors = 0; // error counter
+                int k;
+                
+                // if the first letter is not matching, start with one error
+                if (grid[i][j] != word[0]) {
+                    errors++;
+                }
+
+                // Check the rest of the letters
+                for (k = 1; k < len; k++) {
+                    
+                    // New coordinates
+                    int newX = i + k * directions[d][0];
+                    int newY = j + k * directions[d][1];
+                    
+                    // check bounds
+                    if (newX < 0 || newX >= rows || newY < 0 || newY >= cols) {
+                        break; 
+                    }
+                
+                    if (grid[newX][newY] != word[k]) {
+                        errors++; 
+                        
+                        if (errors > 1) {
+                            break; 
                         }
                     }
-                    // if every letter is found, return the position of the first and last letters
-                    if (k == len) {
-                        positions[0].x = i;
-                        positions[0].y = j;
-                        positions[1].x = i + (len - 1) * directions[d][0];
-                        positions[1].y = j + (len - 1) * directions[d][1];
-                        return positions;
-                    }
+                }
+                
+                if (k == len && errors <= 1) {
+                    
+                    positions[0].x = i;
+                    positions[0].y = j;
+                    positions[1].x = i + (len - 1) * directions[d][0];
+                    positions[1].y = j + (len - 1) * directions[d][1];
+                    
+                    return positions; 
                 }
             }
         }
-	}
-	// if the word isnt found, return the invalid coords of the first and last letter 
-	positions[0].x = -1;
-	positions[0].y = -1;
-	positions[1].x = -1;
-	positions[1].y = -1;
-	return positions;
+    }
+    
+    // free allocated memory if not found
+    free(positions);
+    return NULL; 
 }
 
 
-void ReadGridFromFile(const char* filename, char grid[ROWS][COLS]) {
+// Function to read the grid from a file
+char** ReadGridFromFile(const char* filename, int* rows, int* cols) {
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
         perror("Erreur lors de l'ouverture du fichier");
-        return;
+        *rows = 0;
+        *cols = 0;
+        return NULL;
     }
 
-    char buffer[COLS + 8]; //buffer to read each line, +8 to try on the letters of the end of the line
-	for (int i = 0; i < ROWS; i++) {
-        if (fgets(buffer, sizeof(buffer), file) == NULL) {
-            break; 
-        }
-	// delete \n and \r
-        buffer[strcspn(buffer, "\r\n")] = '\0';
+    char **grid = NULL;
+    char *line = NULL;
+    size_t len = 0;
+    ssize_t read;
 
-	// copy the letters in the grid
-        for (int j = 0; j < COLS; j++) {
-            if (buffer[j] == '\0') {
-		// if the line is too short, fill the rest with space
-		 grid[i][j] = ' ';
-            } else {
-                grid[i][j] = buffer[j];
-            }
+    *rows = 0;
+    *cols = 0;
+
+    while ((read = getline(&line, &len, file)) != -1) {
+        line[strcspn(line, "\r\n")] = '\0';
+        size_t current_len = strlen(line);
+
+        if (*rows == 0 || current_len > (size_t)*cols) {
+            *cols = (int)current_len;
         }
+
+        grid = (char**)realloc(grid, (*rows + 1) * sizeof(char*));
+        if (grid == NULL) err(1, "realloc failed for grid rows");
+
+        grid[*rows] = (char*)malloc((*cols + 1) * sizeof(char));
+        if (grid[*rows] == NULL) err(1, "malloc failed for grid row columns");
+        
+        strcpy(grid[*rows], line);
+
+        for (int j = (int)current_len; j < *cols; j++) {
+            grid[*rows][j] = ' ';
+        }
+        grid[*rows][*cols] = '\0';
+
+        (*rows)++;
     }
 
+    free(line);
     fclose(file);
+
+    if (*rows == 0 && grid != NULL) {
+        free(grid);
+        grid = NULL;
+    } else if (*rows > 0 && *cols == 0) {
+        for(int i = 0; i < *rows; i++) free(grid[i]);
+        free(grid);
+        grid = NULL;
+        *rows = 0;
+    }
+    return grid;
 }
 
 
 int main(size_t argc, char** argv) {
-	// check the number of argument    
-	if (argc != 3) {
-		errx(1, "arguments error");
-	}
+	// check arguments
+    if (argc != 3) {
+        errx(1, "Usage: %s <grid_file> <word_to_find>", argv[0]);
+    }
 
-	// reqd the grid from the file
-	char grid[ROWS][COLS];
-	ReadGridFromFile(argv[1], grid);
+    int rows = 0;
+    int cols = 0;
 
-	char *temp = argv[2];
-	size_t length = strlen(temp);
+    // Read the grid from the file
+    char** grid = ReadGridFromFile(argv[1], &rows, &cols);
 
-	// check the length of the word
-	if (length == 0) {
-		errx(1, "no word");
-	}
+    if (grid == NULL || rows == 0 || cols == 0) {
+        fprintf(stderr, "Could not load a valid grid from file %s\n", argv[1]);
+        return 1;
+    }
 
-	char word[length + 1];
-	strcpy(word, argv[2]);
+    char *temp = argv[2];
+    size_t length = strlen(temp);
 
-	// convert letters to upper
-	for (size_t i = 0; i < length; i++) {
-		if (word[i] >= 'a' && word[i] <= 'z') {
-			word[i] = word[i] - 32;
-		}
-	}
+    if (length == 0) {
+        errx(1, "no word to search");
+    }
 
-	Position* positions = solver(grid, word);
-	if (positions[0].x != -1) {
-		printf("(%d, %d)(%d, %d)\n",positions[0].x, positions[0].y,
-				positions[1].x, positions[1].y);
-	} else {
-		printf("Not found\n");
-	}
-	return 0;
+	// Allocate memory for the word to search
+    char* word = (char*)malloc(length + 1);
+    if (word == NULL)
+        err(1, "malloc failed");
+
+    strcpy(word, argv[2]);
+
+    // Convert the word to uppercase
+    for (size_t i = 0; i < length; i++) {
+        word[i] = (char)toupper((unsigned char)word[i]);
+    }
+    
+    // Convert the grid to uppercase 
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            grid[i][j] = (char)toupper((unsigned char)grid[i][j]);
+        }
+    }
+
+    Position* positions = solver(grid, rows, cols, word);
+    
+    if (positions != NULL) {
+        printf("(%d, %d)(%d, %d)\n", positions[0].x, positions[0].y,
+                                      positions[1].x, positions[1].y);
+        free(positions);
+    } else {
+        printf("Not found\n");
+    }
+
+    // Free allocated memory
+    if (grid != NULL) {
+        for (int i = 0; i < rows; i++) {
+            free(grid[i]);
+        }
+        free(grid);
+    }
+    free(word);
+    
+    return 0;
 }
-
-

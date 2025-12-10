@@ -1,18 +1,16 @@
 #ifndef SOLVER_H
 #define SOLVER_H
 
-// Définition des dimensions de la grille
-#define ROWS 10
-#define COLS 10
+#include <stddef.h> 
 
-
-// Structure pour représenter une position dans la grille
+// Structure to hold the position of a letter in the grid
 typedef struct {
-    int x;
-    int y;
+    int x; 
+    int y; 
 } Position;
 
-// Fonction solver pour rechercher un mot dans la grille
-Position* solver(char grid[ROWS][COLS], char word[]);
+// Prototypes fonctions for the solver and the grid reader
+Position* solver(char** grid, int rows, int cols, const char word[]);
+char** ReadGridFromFile(const char* filename, int* rows, int* cols);
 
 #endif
