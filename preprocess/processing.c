@@ -2,6 +2,7 @@
 #include <math.h>
 #include <string.h>
 #include <cairo.h>
+#include <stdint.h>
 
 // calculates the optimal binarization threshold using Otsu's method
 int find_otsu_threshold(GdkPixbuf *pixbuf)
