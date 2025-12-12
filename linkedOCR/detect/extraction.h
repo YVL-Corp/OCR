@@ -8,14 +8,14 @@ typedef struct {
     int x, y, width, height;
 } Box;
 
-// Structure principale
-typedef struct {
+// CORRECTION ICI : On donne un nom "tag" à la structure : "struct PageLayout"
+// Cela permet à "struct PageLayout" (utilisé dans main.c) et "PageLayout" (le typedef) d'être la MÊME chose.
+typedef struct PageLayout {
     // --- Infos Grille ---
     int grid_x, grid_y, grid_width, grid_height;
     int rows, cols;
     
-    // NOUVEAU : Tableau stockant la position exacte de CHAQUE case
-    // Taille = rows * cols. Accès : grid_cells[row * cols + col]
+    // Tableau stockant la position exacte de CHAQUE case
     Box *grid_cells; 
     
     // --- Infos Liste de mots ---

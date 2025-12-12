@@ -7,19 +7,23 @@
 #include <stdbool.h>
 #include <limits.h>
 
-// DÉSACTIVATION DES WARNINGS PARANOÏAQUES DE GCC POUR CE FICHIER
+// DÉSACTIVATION DES WARNINGS
 #pragma GCC diagnostic ignored "-Wformat-truncation"
 
-// --- CONFIGURATION ---
+// --- CONFIGURATION RENFORCÉE ---
 #define BLACK_PIXEL_THRESHOLD 400 
-#define MIN_BLOB_AREA 10
+
+// Augmenté de 10 à 50 pour ignorer les "poussières"
+#define MIN_BLOB_AREA 50
+
 #define EXPECTED_LETTER_RATIO 0.70
 #define OUTPUT_SIZE 30
 #define UNIVERSAL_PADDING 7 
 #define GRID_SAFETY_MARGIN 4
 
-// Augmentation de la taille du buffer pour éviter les risques réels
-#define PATH_BUFFER_SIZE 4096
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
 
 typedef struct {
     int x, y, width, height;
@@ -49,7 +53,6 @@ static void save_subimage(GdkPixbuf *source, int x, int y, int w, int h, const c
     if (y < 0) y = 0;
     if (x + w > img_w) w = img_w - x;
     if (y + h > img_h) h = img_h - y;
-    
     if (w <= 0 || h <= 0) return;
 
     GdkPixbuf *extracted = gdk_pixbuf_new_subpixbuf(source, x, y, w, h);
@@ -65,7 +68,6 @@ static void save_subimage(GdkPixbuf *source, int x, int y, int w, int h, const c
     
     int new_w = (int)(w * scale);
     int new_h = (int)(h * scale);
-    
     if (new_w < 1) new_w = 1; 
     if (new_h < 1) new_h = 1;
 
@@ -182,6 +184,7 @@ static void detect_and_save_grid_cell(GdkPixbuf *source, Box cell, const char *f
     }
 }
 
+// --- FONCTION NETTOYÉE ET RENFORCÉE ---
 static void segment_and_save_word(GdkPixbuf *source, Box word, const char *word_folder) {
     int w = word.width;
     int h = word.height;
@@ -221,11 +224,20 @@ static void segment_and_save_word(GdkPixbuf *source, Box word, const char *word_
 
     if (count > 0) {
         qsort(blobs, count, sizeof(Blob), compare_blobs);
-        char path[PATH_BUFFER_SIZE];
+        char path[PATH_MAX];
         int letter_idx = 0;
 
         for (int i = 0; i < count; i++) {
             Blob b = blobs[i];
+
+            // --- FILTRE ANTI-BRUIT ---
+            // Si un blob est trop petit en hauteur par rapport à la hauteur totale du mot,
+            // c'est probablement un point ou de la poussière. (ex: < 20% de la hauteur)
+            if (b.height < h * 0.20) {
+                // Ignore noise
+                continue; 
+            }
+
             int *blob_histo = (int*)calloc(b.width, sizeof(int));
             for (int by = 0; by < b.height; by++) {
                 for (int bx = 0; bx < b.width; bx++) {
@@ -251,12 +263,12 @@ static void segment_and_save_word(GdkPixbuf *source, Box word, const char *word_
 
                 int cut_x = find_best_split_col(blob_histo, search_start, search_end);
 
-                snprintf(path, PATH_BUFFER_SIZE, "%s/letter_%d.bmp", word_folder, letter_idx++);
+                snprintf(path, sizeof(path), "%s/letter_%d.bmp", word_folder, letter_idx++);
                 save_subimage(source, word.x + b.x + current_x, word.y + b.y, cut_x - current_x, b.height, path, UNIVERSAL_PADDING);
                 current_x = cut_x;
             }
             
-            snprintf(path, PATH_BUFFER_SIZE, "%s/letter_%d.bmp", word_folder, letter_idx++);
+            snprintf(path, sizeof(path), "%s/letter_%d.bmp", word_folder, letter_idx++);
             save_subimage(source, word.x + b.x + current_x, word.y + b.y, b.width - current_x, b.height, path, UNIVERSAL_PADDING);
 
             free(blob_histo);
@@ -271,28 +283,29 @@ static void segment_and_save_word(GdkPixbuf *source, Box word, const char *word_
 void export_layout_to_files(GdkPixbuf *pixbuf, PageLayout *layout, const char *output_folder) {
     if (!layout) return;
     
-    char path[PATH_BUFFER_SIZE];
+    char path[PATH_MAX];
     create_directory(output_folder);
 
-    snprintf(path, PATH_BUFFER_SIZE, "%s/grid", output_folder); 
+    snprintf(path, sizeof(path), "%s/grid", output_folder); 
     create_directory(path);
     
     for (int r = 0; r < layout->rows; r++) {
         for (int c = 0; c < layout->cols; c++) {
             Box cell = layout->grid_cells[r * layout->cols + c];
-            snprintf(path, PATH_BUFFER_SIZE, "%s/grid/%d_%d.bmp", output_folder, c, r);
+            snprintf(path, sizeof(path), "%s/grid/%d_%d.bmp", output_folder, c, r);
             detect_and_save_grid_cell(pixbuf, cell, path);
         }
     }
 
     if (layout->has_wordlist) {
-        snprintf(path, PATH_BUFFER_SIZE, "%s/words", output_folder); 
+        snprintf(path, sizeof(path), "%s/words", output_folder); 
         create_directory(path);
         
         for (int i = 0; i < layout->word_count; i++) {
-            snprintf(path, PATH_BUFFER_SIZE, "%s/words/word_%d", output_folder, i); 
+            snprintf(path, sizeof(path), "%s/words/word_%d", output_folder, i); 
             create_directory(path);
             segment_and_save_word(pixbuf, layout->words[i], path);
         }
     }
 }
+#pragma GCC diagnostic pop
