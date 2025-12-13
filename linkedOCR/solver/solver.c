@@ -12,65 +12,86 @@ int directions[8][2] = {
     {0, -1}, {-1, -1}, {-1, 0}, {-1, 1}
 };
 
-// --- ALGORITHME DE RECHERCHE INTELLIGENT ---
+// --- 1. CONFIGURATION DES ÉQUIVALENCES ---
+typedef struct {
+    const char *a;
+    const char *b;
+} OcrEquivalence;
+
+// Liste des paires interchangeables
+OcrEquivalence EQUIVALENCES[] = {
+    {"VV", "W"},  // VV <-> W
+    {"Q", "O"},   // Q  <-> O
+    {"C", "G"},   // C  <-> G
+    {"RN", "M"},  // RN <-> M
+    {"1", "I"},   // 1  <-> I
+    {"0", "O"},   // 0  <-> O
+    {"5", "S"},   // 5  <-> S
+    {"(", "C"},   // (  <-> C
+    {"|", "I"},   // |  <-> I
+    // Vous pouvez rajouter d'autres règles ici
+};
+
+// --- UTILITAIRE : REMPLACEMENT ---
+char *str_replace(const char *src, const char *orig, const char *rep) {
+    char *p = strstr(src, orig);
+    if (!p) return NULL; 
+
+    size_t len_src = strlen(src);
+    size_t len_orig = strlen(orig);
+    size_t len_rep = strlen(rep);
+    
+    size_t new_len = (p - src) + len_rep + (len_src - (p - src) - len_orig) + 1;
+    char *new_str = malloc(new_len);
+    if (!new_str) return NULL;
+
+    strncpy(new_str, src, p - src);
+    new_str[p - src] = '\0';
+    strcat(new_str, rep);
+    strcat(new_str, p + len_orig);
+    
+    return new_str;
+}
+
+// --- ALGORITHME DE RECHERCHE ---
 Position* solver(char** grid, int rows, int cols, const char word[])
 {
-    // On va stocker ici le meilleur résultat trouvé (si imparfait)
     Position* best_match = NULL;
-
     int len = strlen(word);
     if (len == 0) return NULL;
 
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < cols; j++) {
-            
             for (int d = 0; d < 8; d++) {
-                
                 int r = i, c = j, k;
                 int errors = 0;
 
                 for (k = 0; k < len; k++) {
-                    if (r < 0 || r >= rows || c < 0 || c >= cols) 
-                        break;
+                    if (r < 0 || r >= rows || c < 0 || c >= cols) break;
                     
                     if (grid[r][c] != word[k]) {
                         errors++;
-                        if (errors > 1) break; // Trop d'erreurs, on coupe
+                        if (errors > 1) break;
                     }
-
                     r += directions[d][0];
                     c += directions[d][1];
                 }
 
-                // Si on a trouvé une correspondance valide (0 ou 1 erreur)
                 if (k == len && errors <= 1) {
-                    
-                    // CAS 1 : Match PARFAIT (0 erreur)
-                    // C'est le Graal, on prend tout de suite et on s'arrête.
-                    if (errors == 0) {
-                        // Si on avait déjà alloué de la mémoire pour un match imparfait, on la réutilise
+                    if (errors == 0) { // Parfait
                         if (best_match == NULL) {
                             best_match = (Position*)malloc(sizeof(Position) * 2);
-                            if (best_match == NULL) err(1, "malloc failed");
+                            if (!best_match) err(1, "malloc failed");
                         }
-
-                        best_match[0].x = j; 
-                        best_match[0].y = i;
+                        best_match[0].x = j; best_match[0].y = i;
                         best_match[1].x = c - directions[d][1];
                         best_match[1].y = r - directions[d][0];
-                        
-                        return best_match; // RETOUR IMMÉDIAT
+                        return best_match; 
                     }
-
-                    // CAS 2 : Match IMPARFAIT (1 erreur)
-                    // On ne le prend que si on n'a rien trouvé avant.
-                    // Et surtout : ON CONTINUE DE CHERCHER au cas où une version parfaite existe plus loin.
-                    if (best_match == NULL) {
+                    if (best_match == NULL) { // Imparfait
                         best_match = (Position*)malloc(sizeof(Position) * 2);
-                        if (best_match == NULL) err(1, "malloc failed");
-
-                        best_match[0].x = j; 
-                        best_match[0].y = i;
+                        if (!best_match) err(1, "malloc failed");
+                        best_match[0].x = j; best_match[0].y = i;
                         best_match[1].x = c - directions[d][1];
                         best_match[1].y = r - directions[d][0];
                     }
@@ -78,39 +99,26 @@ Position* solver(char** grid, int rows, int cols, const char word[])
             }
         }
     }
-    
-    // Si on a fini de parcourir toute la grille sans trouver de match parfait (0 erreur),
-    // on retourne le match imparfait (1 erreur) qu'on a trouvé (ou NULL si rien trouvé).
     return best_match;
 }
 
-// --- LECTURE DYNAMIQUE DE LA GRILLE ---
+// --- IO HELPERS ---
 char** ReadGridFromFile(const char* filename, int* rows, int* cols) {
     FILE *file = fopen(filename, "r");
     if (file == NULL) return NULL;
-
     char **grid = NULL;
     char buffer[2048]; 
-    *rows = 0;
-    *cols = 0;
-
+    *rows = 0; *cols = 0;
     while (fgets(buffer, sizeof(buffer), file)) {
         buffer[strcspn(buffer, "\r\n")] = '\0';
-        
         int len = strlen(buffer);
         if (len == 0) continue; 
-
-        if (*rows == 0) {
-            *cols = len;
-        } 
-        
+        if (*rows == 0) *cols = len;
         grid = realloc(grid, (*rows + 1) * sizeof(char*));
         if (!grid) err(1, "realloc failed");
-
         grid[*rows] = strdup(buffer);
         (*rows)++;
     }
-
     fclose(file);
     return grid;
 }
@@ -118,11 +126,9 @@ char** ReadGridFromFile(const char* filename, int* rows, int* cols) {
 char** ReadWordsFromFile(const char* filename, int* count) {
     FILE* file = fopen(filename, "r");
     if (!file) return NULL;
-    
     char** words = NULL;
     char buffer[256];
     *count = 0;
-
     while (fgets(buffer, sizeof(buffer), file)) {
         buffer[strcspn(buffer, "\r\n")] = 0;
         if (strlen(buffer) > 0) {
@@ -141,21 +147,16 @@ int solve_puzzle(const char *grid_file, const char *words_file, FoundLine **foun
 
     int rows = 0, cols = 0;
     char** grid = ReadGridFromFile(grid_file, &rows, &cols);
-
-    if (grid == NULL || rows == 0) {
+    if (!grid || rows == 0) {
         fprintf(stderr, "Error loading grid from %s\n", grid_file);
         return 1;
     }
-
-    // Mise en majuscule
-    for (int i = 0; i < rows; i++) {
+    for (int i = 0; i < rows; i++) 
         for (int j = 0; j < cols; j++) grid[i][j] = toupper((unsigned char)grid[i][j]);
-    }
 
     int word_count = 0;
     char** words = ReadWordsFromFile(words_file, &word_count);
-
-    if (words == NULL) {
+    if (!words) {
         fprintf(stderr, "Error loading words from %s\n", words_file);
         for (int i = 0; i < rows; i++) free(grid[i]);
         free(grid);
@@ -165,35 +166,79 @@ int solve_puzzle(const char *grid_file, const char *words_file, FoundLine **foun
     printf("Grid size: %dx%d | Words to find: %d\n", cols, rows, word_count);
     printf("--------------------------------\n");
 
-    // Allocation des lignes trouvées pour l'interface
     *found_lines = malloc(sizeof(FoundLine) * word_count);
     *lines_count = 0;
+    
+    int num_fixes = sizeof(EQUIVALENCES) / sizeof(EQUIVALENCES[0]);
 
     for (int i = 0; i < word_count; i++) {
         char* search_word = strdup(words[i]);
         for(int c=0; search_word[c]; c++) search_word[c] = toupper((unsigned char)search_word[c]);
 
+        // 1. RECHERCHE INITIALE
         Position* pos = solver(grid, rows, cols, search_word);
 
-        if (pos != NULL) {
+        // 2. SI ÉCHEC -> TENTATIVE DE CORRECTIONS BIDIRECTIONNELLES
+        if (pos == NULL) {
+            for (int r = 0; r < num_fixes; r++) {
+                char *fixed_word = NULL;
+
+                // TENTATIVE A -> B (ex: VV -> W)
+                fixed_word = str_replace(search_word, EQUIVALENCES[r].a, EQUIVALENCES[r].b);
+                if (fixed_word) {
+                    // MODIFICATION ICI : Affichage dynamique des patterns
+                    printf("  [Try Fix %s->%s] '%s' -> '%s'...\n", 
+                           EQUIVALENCES[r].a, EQUIVALENCES[r].b, search_word, fixed_word);
+                    
+                    pos = solver(grid, rows, cols, fixed_word);
+                    if (pos != NULL) {
+                        printf("\033[0;33mFOUND (Fixed): %-15s (%d,%d) -> (%d,%d)\033[0m\n", 
+                               fixed_word, pos[0].x, pos[0].y, pos[1].x, pos[1].y);
+                        free(fixed_word);
+                        break; 
+                    }
+                    free(fixed_word);
+                }
+
+                // TENTATIVE B -> A (ex: W -> VV)
+                fixed_word = str_replace(search_word, EQUIVALENCES[r].b, EQUIVALENCES[r].a);
+                if (fixed_word) {
+                    // MODIFICATION ICI : Affichage dynamique des patterns
+                    printf("  [Try Fix %s->%s] '%s' -> '%s'...\n", 
+                           EQUIVALENCES[r].b, EQUIVALENCES[r].a, search_word, fixed_word);
+                    
+                    pos = solver(grid, rows, cols, fixed_word);
+                    if (pos != NULL) {
+                        printf("\033[0;33mFOUND (Fixed): %-15s (%d,%d) -> (%d,%d)\033[0m\n", 
+                               fixed_word, pos[0].x, pos[0].y, pos[1].x, pos[1].y);
+                        free(fixed_word);
+                        break; 
+                    }
+                    free(fixed_word);
+                }
+            }
+        } else {
+            // Trouvé normalement
             printf("\033[0;32mFOUND: %-15s (%d,%d) -> (%d,%d)\033[0m\n", 
-                   words[i], pos[0].x, pos[0].y, pos[1].x, pos[1].y);
-            
+                   search_word, pos[0].x, pos[0].y, pos[1].x, pos[1].y);
+        }
+
+        // --- ENREGISTREMENT RÉSULTAT ---
+        if (pos != NULL) {
             (*found_lines)[*lines_count].start_col = pos[0].x;
             (*found_lines)[*lines_count].start_row = pos[0].y;
             (*found_lines)[*lines_count].end_col   = pos[1].x;
             (*found_lines)[*lines_count].end_row   = pos[1].y;
             (*lines_count)++;
-
             free(pos);
         } else {
-            printf("\033[0;31mMISSING: %s\033[0m\n", words[i]);
+            printf("\033[0;31mMISSING: %s\033[0m\n", search_word);
         }
+        
         free(search_word);
         free(words[i]);
     }
 
-    // Nettoyage
     free(words);
     for (int i = 0; i < rows; i++) free(grid[i]);
     free(grid);
