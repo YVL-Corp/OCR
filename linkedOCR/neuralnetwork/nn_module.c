@@ -15,14 +15,15 @@
 #define MAX_IMAGES_PER_LETTER 3000 // Training over 3000 images per letter
 
 // Shuffle dataset so the neural network learns instead of remembering
-static void shuffle_dataset(ImageData *images, int count) {
+// Not used for now
+/*static void shuffle_dataset(ImageData *images, int count) {
     for (int i = count - 1; i > 0; i--) {
         int j = rand() % (i + 1);
         ImageData temp = images[i];
         images[i] = images[j];
         images[j] = temp;
     }
-}
+}*/
 
 
 // Function to rebuild the grid with the neural network
