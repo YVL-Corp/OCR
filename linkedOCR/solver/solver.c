@@ -23,14 +23,9 @@ OcrEquivalence EQUIVALENCES[] = {
     {"VV", "W"},  // VV <-> W
     {"Q", "O"},   // Q  <-> O
     {"C", "G"},   // C  <-> G
-    {"RN", "M"},  // RN <-> M
-    {"1", "I"},   // 1  <-> I
-    {"0", "O"},   // 0  <-> O
-    {"5", "S"},   // 5  <-> S
-    {"(", "C"},   // (  <-> C
-    {"|", "I"},   // |  <-> I
-    // Vous pouvez rajouter d'autres règles ici
-};
+    {"M", "N"}    // M  <-> N
+
+};;
 
 // --- UTILITAIRE : REMPLACEMENT ---
 char *str_replace(const char *src, const char *orig, const char *rep) {
@@ -53,7 +48,7 @@ char *str_replace(const char *src, const char *orig, const char *rep) {
     return new_str;
 }
 
-// --- ALGORITHME DE RECHERCHE ---
+// solver alogrithm
 Position* solver(char** grid, int rows, int cols, const char word[])
 {
     Position* best_match = NULL;
@@ -65,7 +60,7 @@ Position* solver(char** grid, int rows, int cols, const char word[])
             for (int d = 0; d < 8; d++) {
                 int r = i, c = j, k;
                 int errors = 0;
-
+		//check if the word was found
                 for (k = 0; k < len; k++) {
                     if (r < 0 || r >= rows || c < 0 || c >= cols) break;
                     
@@ -77,8 +72,9 @@ Position* solver(char** grid, int rows, int cols, const char word[])
                     c += directions[d][1];
                 }
 
+		//search if an error occured or stop if the word was found
                 if (k == len && errors <= 1) {
-                    if (errors == 0) { // Parfait
+                    if (errors == 0) { 
                         if (best_match == NULL) {
                             best_match = (Position*)malloc(sizeof(Position) * 2);
                             if (!best_match) err(1, "malloc failed");
@@ -88,7 +84,7 @@ Position* solver(char** grid, int rows, int cols, const char word[])
                         best_match[1].y = r - directions[d][0];
                         return best_match; 
                     }
-                    if (best_match == NULL) { // Imparfait
+                    if (best_match == NULL) { 
                         best_match = (Position*)malloc(sizeof(Position) * 2);
                         if (!best_match) err(1, "malloc failed");
                         best_match[0].x = j; best_match[0].y = i;
@@ -101,13 +97,12 @@ Position* solver(char** grid, int rows, int cols, const char word[])
     }
     return best_match;
 }
-
-// --- IO HELPERS ---
+//Read a txt to complete a binary board
 char** ReadGridFromFile(const char* filename, int* rows, int* cols) {
     FILE *file = fopen(filename, "r");
     if (file == NULL) return NULL;
     char **grid = NULL;
-    char buffer[2048]; 
+    char buffer[2048]; //buffer to complete with an high capacity
     *rows = 0; *cols = 0;
     while (fgets(buffer, sizeof(buffer), file)) {
         buffer[strcspn(buffer, "\r\n")] = '\0';
@@ -122,7 +117,7 @@ char** ReadGridFromFile(const char* filename, int* rows, int* cols) {
     fclose(file);
     return grid;
 }
-
+// read the word txt file to complete the words board
 char** ReadWordsFromFile(const char* filename, int* count) {
     FILE* file = fopen(filename, "r");
     if (!file) return NULL;
@@ -141,19 +136,22 @@ char** ReadWordsFromFile(const char* filename, int* count) {
     return words;
 }
 
-// --- FONCTION PRINCIPALE ---
+
+//search all the words in the boards
 int solve_puzzle(const char *grid_file, const char *words_file, FoundLine **found_lines, int *lines_count) {
     printf("\n--- SOLVER MODULE ---\n");
 
-    int rows = 0, cols = 0;
+    int rows = 0, cols = 0; //set up rows and cols
     char** grid = ReadGridFromFile(grid_file, &rows, &cols);
     if (!grid || rows == 0) {
         fprintf(stderr, "Error loading grid from %s\n", grid_file);
         return 1;
     }
+
     for (int i = 0; i < rows; i++) 
         for (int j = 0; j < cols; j++) grid[i][j] = toupper((unsigned char)grid[i][j]);
 
+    //read words
     int word_count = 0;
     char** words = ReadWordsFromFile(words_file, &word_count);
     if (!words) {
@@ -163,6 +161,7 @@ int solve_puzzle(const char *grid_file, const char *words_file, FoundLine **foun
         return 1;
     }
 
+    // displaying bonus
     printf("Grid size: %dx%d | Words to find: %d\n", cols, rows, word_count);
     printf("--------------------------------\n");
 
@@ -175,18 +174,18 @@ int solve_puzzle(const char *grid_file, const char *words_file, FoundLine **foun
         char* search_word = strdup(words[i]);
         for(int c=0; search_word[c]; c++) search_word[c] = toupper((unsigned char)search_word[c]);
 
-        // 1. RECHERCHE INITIALE
+        // basic search
         Position* pos = solver(grid, rows, cols, search_word);
 
-        // 2. SI ÉCHEC -> TENTATIVE DE CORRECTIONS BIDIRECTIONNELLES
+        // check the different errors cases
         if (pos == NULL) {
             for (int r = 0; r < num_fixes; r++) {
                 char *fixed_word = NULL;
 
-                // TENTATIVE A -> B (ex: VV -> W)
+                
                 fixed_word = str_replace(search_word, EQUIVALENCES[r].a, EQUIVALENCES[r].b);
                 if (fixed_word) {
-                    // MODIFICATION ICI : Affichage dynamique des patterns
+                    // display patterns on the consol
                     printf("  [Try Fix %s->%s] '%s' -> '%s'...\n", 
                            EQUIVALENCES[r].a, EQUIVALENCES[r].b, search_word, fixed_word);
                     
@@ -200,7 +199,7 @@ int solve_puzzle(const char *grid_file, const char *words_file, FoundLine **foun
                     free(fixed_word);
                 }
 
-                // TENTATIVE B -> A (ex: W -> VV)
+      
                 fixed_word = str_replace(search_word, EQUIVALENCES[r].b, EQUIVALENCES[r].a);
                 if (fixed_word) {
                     // MODIFICATION ICI : Affichage dynamique des patterns
@@ -218,12 +217,12 @@ int solve_puzzle(const char *grid_file, const char *words_file, FoundLine **foun
                 }
             }
         } else {
-            // Trouvé normalement
+            // found normally
             printf("\033[0;32mFOUND: %-15s (%d,%d) -> (%d,%d)\033[0m\n", 
                    search_word, pos[0].x, pos[0].y, pos[1].x, pos[1].y);
         }
 
-        // --- ENREGISTREMENT RÉSULTAT ---
+        // saving results
         if (pos != NULL) {
             (*found_lines)[*lines_count].start_col = pos[0].x;
             (*found_lines)[*lines_count].start_row = pos[0].y;
@@ -234,7 +233,7 @@ int solve_puzzle(const char *grid_file, const char *words_file, FoundLine **foun
         } else {
             printf("\033[0;31mMISSING: %s\033[0m\n", search_word);
         }
-        
+        //free the board and words
         free(search_word);
         free(words[i]);
     }
