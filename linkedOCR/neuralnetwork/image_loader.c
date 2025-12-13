@@ -8,13 +8,14 @@ double* load_and_convert_image(const char *filepath) {
     GError *error = NULL;
     GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file(filepath, &error);
     
+    // Check error case
     if (!pixbuf) {
         fprintf(stderr, "Error loading image %s: %s\n", filepath, error->message);
         g_error_free(error);
         return NULL;
     }
 
-    // Redimensionner
+    // Resize image
     GdkPixbuf *scaled = gdk_pixbuf_scale_simple(pixbuf, IMAGE_SIZE, IMAGE_SIZE, GDK_INTERP_BILINEAR);
     g_object_unref(pixbuf);
     
@@ -23,19 +24,19 @@ double* load_and_convert_image(const char *filepath) {
         return NULL;
     }
 
-    // Obtenir les données de l'image
+    // Get image data
     int n_channels = gdk_pixbuf_get_n_channels(scaled);
     int rowstride = gdk_pixbuf_get_rowstride(scaled);
     guchar *pixels_data = gdk_pixbuf_get_pixels(scaled);
 
-    // Convertir en array de doubles (0 ou 1)
+    // Convert to an array of doubles
     double *pixels = malloc(PIXEL_COUNT * sizeof(double));
     
     for (int y = 0; y < IMAGE_SIZE; y++) {
         for (int x = 0; x < IMAGE_SIZE; x++) {
             guchar *pixel = pixels_data + y * rowstride + x * n_channels;
             
-            // Calculer la luminosité
+            // Compute luminosity
             int luminance;
             if (n_channels >= 3) {
                 luminance = (pixel[0] + pixel[1] + pixel[2]) / 3;
@@ -43,7 +44,7 @@ double* load_and_convert_image(const char *filepath) {
                 luminance = pixel[0];
             }
             
-            // Seuil à 128: pixels sombres = 1, pixels clairs = 0
+            // 128 threshold: darker pixels = 1, lighter pixels = 0
             pixels[y * IMAGE_SIZE + x] = luminance < 128 ? 1.0 : 0.0;
         }
     }
@@ -52,6 +53,7 @@ double* load_and_convert_image(const char *filepath) {
     return pixels;
 }
 
+// Function to check if the file name respects the expected format
 static gboolean is_valid_image(const char *filename) {
     int len = strlen(filename);
     if (len < 5) return FALSE;
@@ -66,16 +68,18 @@ int load_images_from_folder(const char *folder_path, int label, ImageData **imag
     GError *error = NULL;
     GDir *dir = g_dir_open(folder_path, 0, &error);
     
+    // Check error cases
     if (!dir) {
         fprintf(stderr, "Warning: Cannot open folder '%s': %s\n", folder_path, error->message);
         g_error_free(error);
         return 0;
     }
 
-    // Collecter tous les fichiers valides
+    // Get all valid files
     GPtrArray *valid_files = g_ptr_array_new_with_free_func(g_free);
     const gchar *filename;
     
+    // Fill array with valid files
     while ((filename = g_dir_read_name(dir)) != NULL) {
         if (is_valid_image(filename)) {
             g_ptr_array_add(valid_files, g_strdup(filename));
@@ -83,19 +87,19 @@ int load_images_from_folder(const char *folder_path, int label, ImageData **imag
     }
     g_dir_close(dir);
     
+    // Count amount of files loaded
     guint total_files = valid_files->len;
     if (total_files == 0) {
         g_ptr_array_free(valid_files, TRUE);
         return 0;
     }
     
-    // Mélanger les fichiers
+    // Shuffle files
     int *indices = malloc(total_files * sizeof(int));
     for (guint i = 0; i < total_files; i++) {
         indices[i] = i;
     }
     
-    // Shuffle
     for (int i = total_files - 1; i > 0; i--) {
         int j = rand() % (i + 1);
         int temp = indices[i];
@@ -103,7 +107,7 @@ int load_images_from_folder(const char *folder_path, int label, ImageData **imag
         indices[j] = temp;
     }
     
-    // Charger les images
+    // Load images
     int loaded = 0;
     int max_to_load = ((int)total_files < max_images) ? (int)total_files : max_images;
     
@@ -131,13 +135,14 @@ int load_dataset(const char *root_path, ImageData **images, int max_per_letter) 
     GError *error = NULL;
     GDir *dir = g_dir_open(root_path, 0, &error);
     
+    // Check error cases
     if (!dir) {
         fprintf(stderr, "Error: Cannot open root folder '%s': %s\n", root_path, error->message);
         g_error_free(error);
         return 0;
     }
 
-    // Allouer mémoire (26 lettres max)
+    // Allocate memory (26 letters max)
     *images = malloc(26 * max_per_letter * sizeof(ImageData));
     if (!*images) {
         fprintf(stderr, "Error: Memory allocation failed\n");
@@ -160,7 +165,7 @@ int load_dataset(const char *root_path, ImageData **images, int max_per_letter) 
             continue;
         }
 
-        // Déterminer le label à partir du nom du dossier
+        // Set the label according to file name
         int label = -1;
         if (entry_name[0] >= 'A' && entry_name[0] <= 'Z') {
             label = entry_name[0] - 'A';
@@ -173,6 +178,7 @@ int load_dataset(const char *root_path, ImageData **images, int max_per_letter) 
             continue;
         }
 
+        // Load the letters
         printf("  Loading letter '%c' (label %d)...", 'A' + label, label);
         fflush(stdout);
 
@@ -191,6 +197,7 @@ int load_dataset(const char *root_path, ImageData **images, int max_per_letter) 
     return total_count;
 }
 
+// Free allocated memory for the images
 void free_images(ImageData *images, int count) {
     for (int i = 0; i < count; i++) {
         free(images[i].pixels);
@@ -209,7 +216,9 @@ void print_image(double *pixels) {
 }
 
 static gboolean parse_grid_filename(const char *filename, int *x, int *y) {
-    // Format attendu: XX_YY.bmp
+    // Expected format: XX_YY.bmp OR X_Y.bmp
+
+
     int len = strlen(filename);
     if (len < 7 || strcmp(filename + len - 4, ".bmp") != 0) return FALSE;
     
@@ -222,7 +231,6 @@ static gboolean parse_grid_filename(const char *filename, int *x, int *y) {
     
     if (x_len >= 16 || y_len >= 16 || x_len < 1 || y_len < 1) return FALSE;
     
-    // CORRECTION ICI : Utilisation de memcpy pour éviter le warning -Wstringop-truncation
     memcpy(x_str, filename, x_len);
     x_str[x_len] = '\0';
     
@@ -242,6 +250,7 @@ int load_grid_images(const char *folder_path, GridLetter **letters) {
     GError *error = NULL;
     GDir *dir = g_dir_open(folder_path, 0, &error);
     
+    // Always check error cases
     if (!dir) {
         fprintf(stderr, "Error: Cannot open folder '%s': %s\n", folder_path, error->message);
         g_error_free(error);
@@ -251,6 +260,7 @@ int load_grid_images(const char *folder_path, GridLetter **letters) {
     int count = 0;
     const gchar *filename;
     
+    // Parse file names with function made for that
     while ((filename = g_dir_read_name(dir)) != NULL) {
         int x, y;
         if (parse_grid_filename(filename, &x, &y)) count++;
@@ -261,6 +271,7 @@ int load_grid_images(const char *folder_path, GridLetter **letters) {
         return 0;
     }
     
+    // Initialize an array for the letters of the grid
     *letters = malloc(count * sizeof(GridLetter));
     
     g_dir_rewind(dir);
@@ -288,6 +299,7 @@ int load_grid_images(const char *folder_path, GridLetter **letters) {
     return loaded;
 }
 
+// Free memory allocated for the grid letters
 void free_grid_letters(GridLetter *letters, int count) {
     for (int i = 0; i < count; i++) {
         free(letters[i].pixels);
@@ -295,6 +307,7 @@ void free_grid_letters(GridLetter *letters, int count) {
     free(letters);
 }
 
+// Struct to manipulate the letters file from the words to find in the grid 
 typedef struct {
     char *filename;
     int number;
@@ -315,13 +328,13 @@ static gboolean parse_number_filename(const char *filename, int *number) {
     
     int ext_len = 4;
     
+    // Case when files are formatted as XX_YY.bmp
     if (len > 7 && strncmp(filename, "letter_", 7) == 0) {
         char num_str[16];
         int num_len = len - 7 - ext_len;
         
         if (num_len >= 16 || num_len < 1) return FALSE;
         
-        // CORRECTION ICI : memcpy au lieu de strncpy
         memcpy(num_str, filename + 7, num_len);
         num_str[num_len] = '\0';
         
@@ -331,12 +344,11 @@ static gboolean parse_number_filename(const char *filename, int *number) {
         return TRUE;
     }
     else {
-        // Cas fichiers "N.bmp"
+        // Case where files are X_Y.bmp
         char num_str[16];
         int num_len = len - ext_len;
         if (num_len >= 16 || num_len < 1) return FALSE;
         
-        // CORRECTION ICI : memcpy au lieu de strncpy
         memcpy(num_str, filename, num_len);
         num_str[num_len] = '\0';
         
@@ -352,6 +364,7 @@ char* load_and_predict_word(const char *word_folder, Network *net) {
     GError *error = NULL;
     GDir *dir = g_dir_open(word_folder, 0, &error);
     
+    // Did I mention checking error cases
     if (!dir) {
         fprintf(stderr, "Error: Cannot open folder '%s': %s\n", word_folder, error->message);
         g_error_free(error);
@@ -361,6 +374,7 @@ char* load_and_predict_word(const char *word_folder, Network *net) {
     GPtrArray *files_array = g_ptr_array_new();
     const gchar *filename;
     
+    // Get all the letters from a word folder to construct the words
     while ((filename = g_dir_read_name(dir)) != NULL) {
         int number;
         if (parse_number_filename(filename, &number)) {
@@ -383,8 +397,9 @@ char* load_and_predict_word(const char *word_folder, Network *net) {
     
     double *hidden = malloc(net->hidden_size * sizeof(double));
     double *output = malloc(net->output_size * sizeof(double));
-    
-    // Correction boucle guint
+
+
+    // Decrypt the words with the neural network
     for (guint i = 0; i < files_array->len; i++) {
         NumberedFile *nf = g_ptr_array_index(files_array, i);
         gchar *filepath = g_build_filename(word_folder, nf->filename, NULL);
@@ -392,17 +407,18 @@ char* load_and_predict_word(const char *word_folder, Network *net) {
         double *pixels = load_and_convert_image(filepath);
         g_free(filepath);
         
+        // Fill voids with question marks to debug
         if (!pixels) {
             word[i] = '?';
             continue;
         }
         
+        // Guess letter
         forward(net, pixels, hidden, output);
         
         int predicted = 0;
-        double max_prob = output[0];
-        
-        // Correction boucle size_t
+        double max_prob = output[0];    
+    
         for (size_t j = 1; j < net->output_size; j++) {
             if (output[j] > max_prob) {
                 max_prob = output[j];
@@ -414,12 +430,14 @@ char* load_and_predict_word(const char *word_folder, Network *net) {
         free(pixels);
     }
     
+    // terminate the array with \0 to be able to iterate over it
+
     word[files_array->len] = '\0';
     
+    // Careful not to leak memory
     free(hidden);
     free(output);
     
-    // Correction boucle guint
     for (guint i = 0; i < files_array->len; i++) {
         NumberedFile *nf = g_ptr_array_index(files_array, i);
         g_free(nf->filename);
@@ -433,16 +451,19 @@ char* load_and_predict_word(const char *word_folder, Network *net) {
 int load_and_predict_words(const char *words_folder, Network *net, Word **words) {
     GError *error = NULL;
     GDir *dir = g_dir_open(words_folder, 0, &error);
-    
+
+    // Case of invalid folder
     if (!dir) {
         fprintf(stderr, "Error: Cannot open folder '%s': %s\n", words_folder, error->message);
         g_error_free(error);
         return 0;
     }
 
+    // Initialize array of valid words folder
     GPtrArray *folders = g_ptr_array_new_with_free_func(g_free);
     const gchar *entry_name;
     
+    // Fill the array with the folders with valid names
     while ((entry_name = g_dir_read_name(dir)) != NULL) {
         if (entry_name[0] == '.') continue;
         
@@ -454,8 +475,11 @@ int load_and_predict_words(const char *words_folder, Network *net, Word **words)
             g_free(folder_path);
         }
     }
+    // Don't forget to close opened folders
     g_dir_close(dir);
     
+
+    // Get amount of words from the amount of folders loaded
     guint num_words = folders->len;
     if (num_words == 0) {
         g_ptr_array_free(folders, TRUE);
@@ -464,9 +488,9 @@ int load_and_predict_words(const char *words_folder, Network *net, Word **words)
     
     g_ptr_array_sort(folders, (GCompareFunc)strcmp);
     
+    // Initialize words variable
     *words = malloc(num_words * sizeof(Word));
     
-    // Correction boucle guint
     for (guint i = 0; i < num_words; i++) {
         const char *folder_path = g_ptr_array_index(folders, i);
         const char *folder_name = strrchr(folder_path, '/');
@@ -493,6 +517,8 @@ int load_and_predict_words(const char *words_folder, Network *net, Word **words)
     return (int)num_words;
 }
 
+
+// Free all allocated memory for the words
 void free_words(Word *words, int count) {
     for (int i = 0; i < count; i++) {
         free(words[i].word);
