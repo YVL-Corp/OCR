@@ -4,7 +4,6 @@
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <gtk/gtk.h>
 
-// Déclarations anticipées (pour éviter les erreurs d'inclusion croisée)
 struct PageLayout;
 struct FoundLine;
 
@@ -18,15 +17,21 @@ struct PreProcessData
     
     double rotation_angle;
 
-    // --- NOUVEAU : Données pour le dessin final (Trait vert sur les mots) ---
-    struct PageLayout *layout;  // Pour connaître la position des cases en pixels
-    struct FoundLine *lines;    // Liste des lignes (début/fin) trouvées par le solver
-    int line_count;             // Nombre de lignes à dessiner
+    struct PageLayout *layout;
+    struct FoundLine *lines;
+    int line_count;
 };
 
+// calculates the optimal binarization threshold using otsu's method
 int find_otsu_threshold(GdkPixbuf *pixbuf);
+
+// applies a grayscale and threshold filter (binarization)
 void apply_bw_filter(struct PreProcessData *data);
+
+// automatically detects and corrects the skew angle of the image
 void auto_rotate(struct PreProcessData *data);
+
+// create the rotated pixbuf and export it
 GdkPixbuf *create_rotated_pixbuf(GdkPixbuf *src, double angle_deg);
 
 #endif

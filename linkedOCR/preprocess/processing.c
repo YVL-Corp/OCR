@@ -96,16 +96,15 @@ int find_otsu_threshold(GdkPixbuf *pixbuf)
     return optimal_threshold;
 }
 
-// apply a simple contrast/brightness adjustment on a pixbuf in-place
-// new_gray = clamp(alpha * (gray - 128) + 128 + beta)
-// alpha > 1.0  => more contrast
-// alpha < 1.0  => less contrast
-// beta  > 0    => brighter
-// beta  < 0    => darker
+// applies contrast and brightness adjustment to the pixbuf
 void enhance_contrast(GdkPixbuf *pixbuf, double alpha, int beta)
 {
     if (!pixbuf)
+    {
         return;
+    }
+
+    // get image dimensions and pixel data
 
     int width = gdk_pixbuf_get_width(pixbuf);
     int height = gdk_pixbuf_get_height(pixbuf);
@@ -113,6 +112,12 @@ void enhance_contrast(GdkPixbuf *pixbuf, double alpha, int beta)
     int n_channels = gdk_pixbuf_get_n_channels(pixbuf);
     guchar *pixels = gdk_pixbuf_get_pixels(pixbuf);
 
+    // apply a simple contrast/brightness adjustment on a pixbuf in-place
+    // new_gray = clamp(alpha * (gray - 128) + 128 + beta)
+    // alpha > 1.0  => more contrast
+    // alpha < 1.0  => less contrast
+    // beta  > 0    => brighter
+    // beta  < 0    => darker
     for (int y = 0; y < height; y++)
     {
         for (int x = 0; x < width; x++)
@@ -144,41 +149,52 @@ void enhance_contrast(GdkPixbuf *pixbuf, double alpha, int beta)
     }
 }
 
+// removes isolated noise pixels from the image
 void remove_isolated_noise(GdkPixbuf *pixbuf)
 {
+    // get image dimensions and pixel data
     int width = gdk_pixbuf_get_width(pixbuf);
     int height = gdk_pixbuf_get_height(pixbuf);
     int rowstride = gdk_pixbuf_get_rowstride(pixbuf);
     int n_channels = gdk_pixbuf_get_n_channels(pixbuf);
     guchar *pixels = gdk_pixbuf_get_pixels(pixbuf);
 
+    // create a temporary copy to read from while modifying the original
     guchar *copy = g_memdup2(pixels, rowstride * height);
 
+    // iterate over the image, skipping the borders
     for (int y = 1; y < height - 1; y++)
     {
         for (int x = 1; x < width - 1; x++)
         {
             guchar *p = copy + y * rowstride + x * n_channels;
 
+            // check if the current pixel is black (potential noise)
             if (p[0] == 0)
             {
                 int black_neighbors = 0;
 
+                // check the 8 neighbors around the pixel
                 for (int j = -1; j <= 1; j++)
                 {
                     for (int i = -1; i <= 1; i++)
                     {
+                        // skip the pixel itself
                         if (i == 0 && j == 0)
                             continue;
 
                         guchar *q = copy + (y + j) * rowstride + (x + i) * n_channels;
 
+                        // count black neighbors
                         if (q[0] == 0)
                             black_neighbors++;
                     }
                 }
+
+                // if the pixel has few black neighbors, it's likely noise
                 if (black_neighbors <= 1)
                 {
+                    // set the pixel to white in the original image
                     guchar *dst = pixels + y * rowstride + x * n_channels;
                     dst[0] = dst[1] = dst[2] = 255;
                 }
@@ -186,6 +202,7 @@ void remove_isolated_noise(GdkPixbuf *pixbuf)
         }
     }
 
+    // free the temporary copy
     g_free(copy);
 }
 
@@ -315,20 +332,24 @@ double calculate_variance(long *data, int n)
     double sum = 0;
     double sum_sq = 0;
 
+    // calculate sum and sum of squares
     for (int i = 0; i < n; i++)
     {
         sum += data[i];
         sum_sq += data[i] * data[i];
     }
 
+    // calculate mean
     double mean = sum / n;
 
+    // return variance: E[X^2] - (E[X])^2
     return (sum_sq / n) - (mean * mean);
 }
 
 // detects skew angle using projection profile
 double detect_skew_angle(GdkPixbuf *pixbuf)
 {
+    // get image dimensions and pixel data
     int width = gdk_pixbuf_get_width(pixbuf);
     int height = gdk_pixbuf_get_height(pixbuf);
     int rowstride = gdk_pixbuf_get_rowstride(pixbuf);
@@ -375,6 +396,8 @@ double detect_skew_angle(GdkPixbuf *pixbuf)
 
         double variance = calculate_variance(histogram, bin_size);
 
+        // check if this is the best variance we've found so far
+        // higher variance means better alignment with text lines
         if (variance > max_variance)
         {
             max_variance = variance;
@@ -386,6 +409,7 @@ double detect_skew_angle(GdkPixbuf *pixbuf)
 
     return best_angle;
 }
+// automatically detects and corrects the skew angle of the image
 
 void auto_rotate(struct PreProcessData *data)
 {
@@ -395,6 +419,8 @@ void auto_rotate(struct PreProcessData *data)
     }
 
     g_print("Detecting skew angle...\n");
+
+    // detect the skew angle of the text
     double angle = detect_skew_angle(data->processed_pixbuf);
     g_print("Detected skew angle: %.2f degrees\n", angle);
 
@@ -406,6 +432,6 @@ void auto_rotate(struct PreProcessData *data)
         gtk_range_set_value(GTK_RANGE(data->scale_rotate), -angle);
     }
 
-    // redraw
+    // redraw the drawing area to show the rotated image
     gtk_widget_queue_draw(data->drawing_area);
 }
