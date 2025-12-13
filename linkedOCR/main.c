@@ -157,6 +157,7 @@ gboolean run_step3_extract(struct PreProcessData *data) {
 
     g_print("\n--- [3] EXTRACTION ---\n");
 
+    // Gestion de la rotation manuelle si nécessaire
     if (fabs(data->rotation_angle) > 0.1) {
         GdkPixbuf *rotated = create_rotated_pixbuf(data->processed_pixbuf, data->rotation_angle);
         if (rotated) {
@@ -168,16 +169,39 @@ gboolean run_step3_extract(struct PreProcessData *data) {
     }
 
     GdkPixbuf *final_pixbuf = ensure_rgb_no_alpha(data->processed_pixbuf);
+    
+    // Détection
     data->layout = detect_layout_from_pixbuf(final_pixbuf);
 
     if (data->layout) {
-        g_print("  > Grid Detected: %dx%d\n", data->layout->cols, data->layout->rows);
-        
-        // --- NETTOYAGE CRITIQUE AVANT EXPORT ---
-        // On s'assure que le dossier est propre pour éviter le mélange de lettres
-        // (Note: clean_output_directory vide tout, donc on recrée dans image_export.c)
-        
+        // --- BLOC DE REPORTING AJOUTÉ ICI ---
+        g_print("\n  === LAYOUT REPORT ===\n");
+        g_print("  [GRID]\n");
+        g_print("    Dimensions : %d cols x %d rows\n", data->layout->cols, data->layout->rows);
+        g_print("    Position   : x=%d, y=%d (size: %dx%d)\n", 
+                data->layout->grid_x, data->layout->grid_y, 
+                data->layout->grid_width, data->layout->grid_height);
+
+        g_print("  [WORD LIST]\n");
+        if (data->layout->has_wordlist) {
+            g_print("    Detected   : %d words blocks\n", data->layout->word_count);
+            g_print("    Position   : x=%d (width: %d)\n", data->layout->list_x, data->layout->list_width);
+            
+            // Affichage détaillé de chaque bloc de mot trouvé
+            for (int i = 0; i < data->layout->word_count; i++) {
+                Box w = data->layout->words[i];
+                g_print("    -> Word %02d : y=%-4d | h=%-3d | w=%-3d px\n", 
+                        i, w.y, w.height, w.width);
+            }
+        } else {
+            g_print("    Status     : Not detected (or merged with grid).\n");
+        }
+        g_print("  =====================\n\n");
+        // ------------------------------------
+
+        g_print("  > Exporting images to '%s'...\n", OUTPUT_DIR);
         export_layout_to_files(final_pixbuf, data->layout, OUTPUT_DIR);
+        
         g_print("| [3] DONE.\n");
         g_object_unref(final_pixbuf);
         return TRUE;
