@@ -9,8 +9,7 @@ int save_network(Network *net, const char *filename) {
         return 0;
     }
 
-    // CONVERSION CRITIQUE : On cast en int pour rester compatible avec le format de Tristan
-    // (Même si on utilise size_t en mémoire, on écrit 4 octets sur le disque)
+    // Write data of size of 4 bytes
     int input = (int)net->input_size;
     int hidden = (int)net->hidden_size;
     int output = (int)net->output_size;
@@ -19,15 +18,18 @@ int save_network(Network *net, const char *filename) {
     fwrite(&hidden, sizeof(int), 1, file);
     fwrite(&output, sizeof(int), 1, file);
 
-    // Les poids sont des doubles, ça ne change pas (8 octets partout)
+
+    // Write first layer (input)
     for (size_t i = 0; i < net->input_size; i++) {
         fwrite(net->weights_input_hidden[i], sizeof(double), net->hidden_size, file);
     }
 
+    // Second layer (hidden)
     for (size_t i = 0; i < net->hidden_size; i++) {
         fwrite(net->weights_hidden_output[i], sizeof(double), net->output_size, file);
     }
 
+    // Thrid layer (output)
     fwrite(net->bias_hidden, sizeof(double), net->hidden_size, file);
     fwrite(net->bias_output, sizeof(double), net->output_size, file);
 
@@ -43,9 +45,10 @@ Network* load_network(const char *filename) {
         return NULL;
     }
 
-    // LECTURE COMPATIBLE : On lit des int (4 octets) comme dans le fichier model3.bin
+    // Incompatibility problems when reading/writing size_t data so we use int
     int input, hidden, output;
     
+    // Check if parse seems correct
     if (fread(&input, sizeof(int), 1, file) != 1 ||
         fread(&hidden, sizeof(int), 1, file) != 1 ||
         fread(&output, sizeof(int), 1, file) != 1) {
@@ -54,14 +57,14 @@ Network* load_network(const char *filename) {
         return NULL;
     }
 
-    // On crée le réseau propre avec des size_t
+    // Recreate network with parsed data
     Network *net = create_network((size_t)input, (size_t)hidden, (size_t)output);
     if (!net) {
         fclose(file);
         return NULL;
     }
 
-    // Lecture des poids
+    // Read weights for input layers
     for (size_t i = 0; i < net->input_size; i++) {
         if (fread(net->weights_input_hidden[i], sizeof(double), net->hidden_size, file) != net->hidden_size) {
             fprintf(stderr, "Error: Failed to read input->hidden weights\n");
@@ -71,6 +74,7 @@ Network* load_network(const char *filename) {
         }
     }
 
+    // Read weights for hidden layers
     for (size_t i = 0; i < net->hidden_size; i++) {
         if (fread(net->weights_hidden_output[i], sizeof(double), net->output_size, file) != net->output_size) {
             fprintf(stderr, "Error: Failed to read hidden->output weights\n");
@@ -80,6 +84,7 @@ Network* load_network(const char *filename) {
         }
     }
 
+    // Read weights for output layers
     if (fread(net->bias_hidden, sizeof(double), net->hidden_size, file) != net->hidden_size ||
         fread(net->bias_output, sizeof(double), net->output_size, file) != net->output_size) {
         fprintf(stderr, "Error: Failed to read biases\n");
