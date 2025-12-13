@@ -22,7 +22,6 @@ typedef struct {
     int label;
 } TrainingExample;
 
-// Prototypes corrigés avec size_t
 Network* create_network(size_t input, size_t hidden, size_t output);
 void free_network(Network* net);
 void initialize_weights(Network* net);
