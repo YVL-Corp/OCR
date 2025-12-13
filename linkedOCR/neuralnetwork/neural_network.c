@@ -1,11 +1,13 @@
 #include "neural_network.h" 
 
+// Sigmoid function, useful for manipulating weights in the neural network
 double sigmoid(double x) {
     return 1.0 / (1.0 + exp(-x));
 }
 
-// On utilise bien size_t pour les dimensions en mémoire
 Network *create_network(size_t input, size_t hidden, size_t output) {
+
+    // Initialize network fromthe parameters
     Network *net = (Network *)malloc(sizeof(Network));
     net->input_size = input;
     net->hidden_size = hidden;
@@ -35,28 +37,36 @@ void initialize_weights(Network *net) {
         seeded = 1;
     }
     
-    // Utilisation de size_t pour les boucles -> plus de warnings
+    // Initialize input-hidden weights with value between -0.5 and 0.5
     for (size_t i = 0; i < net->input_size; i++) {
         for (size_t j = 0; j < net->hidden_size; j++) {
             net->weights_input_hidden[i][j] = ((double)rand() / RAND_MAX) - 0.5;
         }
     }
     
+    // Same for the hidden-output weights
     for (size_t i = 0; i < net->hidden_size; i++) {
         for (size_t j = 0; j < net->output_size; j++) {
             net->weights_hidden_output[i][j] = ((double)rand() / RAND_MAX) - 0.5;
         }
     }
     
+    // And initialize bias from hidden layers
     for (size_t i = 0; i < net->hidden_size; i++) {
         net->bias_hidden[i] = 0.0;
     }
     
+    // Same for output
     for (size_t i = 0; i < net->output_size; i++) {
         net->bias_output[i] = 0.0;
     }
+
+    // No need to initialize bias for input as the values will be determinated from the 30x30 .bmp input
 }
 
+
+
+// Free all network data (no leaks)
 void free_network(Network *net) {
     for (size_t i = 0; i < net->input_size; i++) {
         free(net->weights_input_hidden[i]);
@@ -74,14 +84,19 @@ void free_network(Network *net) {
 }
 
 double *forward(Network *net, double *input, double *hidden, double *output) {
+    
+    // Calculate hidden values from the input, weights and bias
     for (size_t i = 0; i < net->hidden_size; i++) {
         hidden[i] = net->bias_hidden[i];
         for (size_t j = 0; j < net->input_size; j++) {
             hidden[i] += input[j] * net->weights_input_hidden[j][i];
         }
+
+        // Soften calculated value with sigmoid
         hidden[i] = sigmoid(hidden[i]);
     }
     
+    // Propagate to the output layers
     for (size_t i = 0; i < net->output_size; i++) {
         output[i] = net->bias_output[i];
         for (size_t j = 0; j < net->hidden_size; j++) {
@@ -89,9 +104,14 @@ double *forward(Network *net, double *input, double *hidden, double *output) {
         }
     }
 
+
+    // If only one output layers (true or false), then use sigmoid (used before for the binary operations)
     if (net->output_size == 1) {
         output[0] = sigmoid(output[0]);
-    } else {
+    }
+
+    // Otherwise use softmax
+    else {
         double max_val = output[0];
         for (size_t i = 1; i < net->output_size; i++) {
             if (output[i] > max_val) max_val = output[i];
@@ -112,17 +132,22 @@ void backpropagate(Network* net, double *input, double *target, double learning_
     double *hidden = malloc(net->hidden_size * sizeof(double));
     double *output = malloc(net->output_size * sizeof(double));
     
+    // Calculate output
     forward(net, input, hidden, output);
     
     double *output_errors = malloc(net->output_size * sizeof(double));
+    // Not used since output isnt binary operations anymore
     if (net->output_size == 1) {
         output_errors[0] = (output[0] - target[0]) * output[0] * (1.0 - output[0]);
-    } else {
+    } 
+    // Calculate margin of error
+    else {
         for (size_t i = 0; i < net->output_size; i++) {
             output_errors[i] = output[i] - target[i];
         }
     }
 
+    // If the neural network was wrong, change the weights based on the learning rate and gradient function
     for (size_t i = 0; i < net->hidden_size; i++) {
         for (size_t j = 0; j < net->output_size; j++) {
             double gradient = hidden[i] * output_errors[j];
@@ -130,29 +155,36 @@ void backpropagate(Network* net, double *input, double *target, double learning_
         }
     }  
 
+    // Correct bias for output layers
     for (size_t i = 0; i < net->output_size; i++) {
         net->bias_output[i] -= learning_rate * output_errors[i];
     }
 
+    // Correct the weights for the input->hidden wiehgts
     double *delta_hidden = malloc(net->hidden_size * sizeof(double));
     for (size_t i = 0; i < net->hidden_size; i++) {
         delta_hidden[i] = 0.0;
         for (size_t j = 0; j < net->output_size; j++) {
             delta_hidden[i] += output_errors[j] * net->weights_hidden_output[i][j];
         }
+
+        // derivative of sigmoid function
         delta_hidden[i] *= hidden[i] * (1.0 - hidden[i]);
     }
 
+    // And same for the biases
     for (size_t i = 0; i < net->input_size; i++) {
         for (size_t j = 0; j < net->hidden_size; j++) {
             double gradient = input[i] * delta_hidden[j];
             net->weights_input_hidden[i][j] -= learning_rate * gradient;
         }
     }
+
     for (size_t i = 0; i < net->hidden_size; i++) {
         net->bias_hidden[i] -= learning_rate * delta_hidden[i];
     }
 
+    // Free all allocated memory
     free(output_errors);
     free(delta_hidden);
     free(hidden);
@@ -165,10 +197,14 @@ void train(Network* net, TrainingExample* examples, size_t num_examples, int epo
         for (size_t i = 0; i < num_examples; i++) {
             double *target = calloc(net->output_size, sizeof(double));
             target[examples[i].label] = 1.0;
+
+            // Try to guess letter and correct the neural network if wrong
             backpropagate(net, examples[i].pixels, target, learning_rate);
             free(target);
         }
 
+
+        // Display accuracy every 100 epochs
         if ((epoch + 1) % 100 == 0) {
             int correct = 0;
             double *hidden = malloc(net->hidden_size * sizeof(double));
@@ -194,7 +230,9 @@ void train(Network* net, TrainingExample* examples, size_t num_examples, int epo
             double accuracy = (double)correct / num_examples * 100.0;
             printf("Epoch %d/%d - Accuracy: %.2f%%\n", epoch + 1, epochs, accuracy);
 
-            if (accuracy > 99.0) {
+            // Stop early in case of good training to not have to wait the whole training
+            if (accuracy > 99.9) {
+                printf("!!! Reached > 99.99%% accuracy !!!\n Stopping Early...\n");
                 break;
             }
         }
