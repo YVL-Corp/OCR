@@ -7,23 +7,21 @@
 #include <string.h> 
 #include <ctype.h> 
 
-// Structure interne (existante)
+// pos struct
 typedef struct {
     int x; 
     int y; 
 } Position;
 
-// NOUVEAU : Structure pour renvoyer une ligne trouvée à l'interface
+// line struct
 typedef struct {
     int start_col, start_row;
     int end_col, end_row;
 } FoundLine;
-
+//prototypes functions
 Position* solver(char** grid, int rows, int cols, const char word[]);
 char** ReadGridFromFile(const char* filename, int* rows, int* cols);
 char** ReadWordsFromFile(const char* filename, int* count);
-
-// MODIFIÉ : Renvoie maintenant les lignes trouvées via un pointeur
 int solve_puzzle(const char *grid_file, const char *words_file, FoundLine **lines, int *line_count);
 
 #endif
