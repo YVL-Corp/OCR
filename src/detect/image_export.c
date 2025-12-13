@@ -7,14 +7,14 @@
 #include <stdbool.h>
 #include <limits.h>
 
-// DÉSACTIVATION DES WARNINGS
+// Disable paranoid warnings about path length truncation
 #pragma GCC diagnostic ignored "-Wformat-truncation"
 
-// --- CONFIGURATION RENFORCÉE ---
+// --- Configuration ---
 #define BLACK_PIXEL_THRESHOLD 400 
 
-// Augmenté de 10 à 50 pour ignorer les "poussières"
-#define MIN_BLOB_AREA 50
+// Increased to 50 to ignore dust/noise
+#define MIN_BLOB_AREA 50 
 
 #define EXPECTED_LETTER_RATIO 0.70
 #define OUTPUT_SIZE 30
@@ -30,7 +30,8 @@ typedef struct {
     int area;
 } Blob;
 
-// --- HELPER FUNCTIONS ---
+// --- Helper Functions ---
+
 static void create_directory(const char *path) {
     struct stat st = {0};
     if (stat(path, &st) == -1) {
@@ -49,16 +50,21 @@ static void save_subimage(GdkPixbuf *source, int x, int y, int w, int h, const c
     int img_w = gdk_pixbuf_get_width(source);
     int img_h = gdk_pixbuf_get_height(source);
     
+    // Bounds check
     if (x < 0) x = 0; 
     if (y < 0) y = 0;
     if (x + w > img_w) w = img_w - x;
     if (y + h > img_h) h = img_h - y;
     if (w <= 0 || h <= 0) return;
 
+    // Extract
     GdkPixbuf *extracted = gdk_pixbuf_new_subpixbuf(source, x, y, w, h);
+    
+    // Create canvas (30x30 white background)
     GdkPixbuf *canvas = gdk_pixbuf_new(GDK_COLORSPACE_RGB, FALSE, 8, OUTPUT_SIZE, OUTPUT_SIZE);
     gdk_pixbuf_fill(canvas, 0xFFFFFFFF);
 
+    // Calculate scale to fit with padding
     int target_size = OUTPUT_SIZE - (padding * 2);
     if (target_size < 1) target_size = 1;
 
@@ -74,6 +80,7 @@ static void save_subimage(GdkPixbuf *source, int x, int y, int w, int h, const c
     int offset_x = (OUTPUT_SIZE - new_w) / 2;
     int offset_y = (OUTPUT_SIZE - new_h) / 2;
 
+    // Paste resized image onto canvas
     gdk_pixbuf_scale(extracted, canvas, offset_x, offset_y, new_w, new_h, offset_x, offset_y, scale, scale, GDK_INTERP_BILINEAR);
 
     if (!gdk_pixbuf_save(canvas, filepath, "bmp", NULL, NULL)) {
@@ -85,23 +92,27 @@ static void save_subimage(GdkPixbuf *source, int x, int y, int w, int h, const c
 }
 
 // -------------------------------------------------------------
-// SEGMENTATION LOGIC
+// SEGMENTATION LOGIC (FLOOD FILL)
 // -------------------------------------------------------------
 static void flood_fill(guchar *pixels, bool *visited, int w, int h, int rs, int nc, 
                        int x, int y, int *min_x, int *max_x, int *min_y, int *max_y, int *area) {
+    // Boundary and color check
     if (x < 0 || x >= w || y < 0 || y >= h || visited[y * w + x]) return;
 
     guchar *p = pixels + y * rs + x * nc;
-    if ((p[0] + p[1] + p[2]) >= BLACK_PIXEL_THRESHOLD) return; 
+    if ((p[0] + p[1] + p[2]) >= BLACK_PIXEL_THRESHOLD) return; // Not black
 
+    // Mark visited
     visited[y * w + x] = true;
     (*area)++;
 
+    // Update bounding box
     if (x < *min_x) *min_x = x; 
     if (x > *max_x) *max_x = x;
     if (y < *min_y) *min_y = y; 
     if (y > *max_y) *max_y = y;
 
+    // Recursion (4-connected)
     flood_fill(pixels, visited, w, h, rs, nc, x + 1, y, min_x, max_x, min_y, max_y, area);
     flood_fill(pixels, visited, w, h, rs, nc, x - 1, y, min_x, max_x, min_y, max_y, area);
     flood_fill(pixels, visited, w, h, rs, nc, x, y + 1, min_x, max_x, min_y, max_y, area);
@@ -117,6 +128,7 @@ static int find_best_split_col(int *histo, int start_x, int end_x) {
             min_val = histo[x];
             best_x = x;
         } else if (histo[x] == min_val) {
+            // Pick the one closest to center
             int mid = (start_x + end_x) / 2;
             if (abs(x - mid) < abs(best_x - mid)) {
                 best_x = x;
@@ -149,6 +161,7 @@ static void detect_and_save_grid_cell(GdkPixbuf *source, Box cell, const char *f
     int best_min_y = 0, best_max_y = 0;
     bool found_something = false;
 
+    // Find the largest connected component in the cell (the letter)
     for (int y = 0; y < safe_h; y++) {
         for (int x = 0; x < safe_w; x++) {
             if (!visited[y * safe_w + x]) {
@@ -184,7 +197,10 @@ static void detect_and_save_grid_cell(GdkPixbuf *source, Box cell, const char *f
     }
 }
 
-// --- FONCTION NETTOYÉE ET RENFORCÉE ---
+/**
+ * Segments a word block into individual letters and saves them.
+ * Includes anti-noise filtering.
+ */
 static void segment_and_save_word(GdkPixbuf *source, Box word, const char *word_folder) {
     int w = word.width;
     int h = word.height;
@@ -199,6 +215,7 @@ static void segment_and_save_word(GdkPixbuf *source, Box word, const char *word_
     Blob *blobs = (Blob*)malloc(capacity * sizeof(Blob));
     int count = 0;
 
+    // Detect all blobs in the word box
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
             if (!visited[y * w + x]) {
@@ -223,21 +240,23 @@ static void segment_and_save_word(GdkPixbuf *source, Box word, const char *word_
     }
 
     if (count > 0) {
+        // Sort from left to right
         qsort(blobs, count, sizeof(Blob), compare_blobs);
+        
         char path[PATH_MAX];
         int letter_idx = 0;
 
         for (int i = 0; i < count; i++) {
             Blob b = blobs[i];
 
-            // --- FILTRE ANTI-BRUIT ---
-            // Si un blob est trop petit en hauteur par rapport à la hauteur totale du mot,
-            // c'est probablement un point ou de la poussière. (ex: < 20% de la hauteur)
+            // --- ANTI-NOISE FILTER ---
+            // If a blob is too small vertically compared to the word height (e.g. < 20%),
+            // it's likely a dot, comma, or noise.
             if (b.height < h * 0.20) {
-                // Ignore noise
                 continue; 
             }
 
+            // ... (Histogram calculation for merged letter splitting if needed) ...
             int *blob_histo = (int*)calloc(b.width, sizeof(int));
             for (int by = 0; by < b.height; by++) {
                 for (int bx = 0; bx < b.width; bx++) {
@@ -247,6 +266,7 @@ static void segment_and_save_word(GdkPixbuf *source, Box word, const char *word_
                 }
             }
 
+            // Heuristic to split connected characters
             float expected_w = b.height * EXPECTED_LETTER_RATIO;
             int num_letters = (int)((b.width / expected_w) + 0.5); 
             if (num_letters < 1) num_letters = 1;
@@ -268,6 +288,7 @@ static void segment_and_save_word(GdkPixbuf *source, Box word, const char *word_
                 current_x = cut_x;
             }
             
+            // Save the last (or only) part of the blob
             snprintf(path, sizeof(path), "%s/letter_%d.bmp", word_folder, letter_idx++);
             save_subimage(source, word.x + b.x + current_x, word.y + b.y, b.width - current_x, b.height, path, UNIVERSAL_PADDING);
 
@@ -289,6 +310,7 @@ void export_layout_to_files(GdkPixbuf *pixbuf, PageLayout *layout, const char *o
     snprintf(path, sizeof(path), "%s/grid", output_folder); 
     create_directory(path);
     
+    // Save grid cells
     for (int r = 0; r < layout->rows; r++) {
         for (int c = 0; c < layout->cols; c++) {
             Box cell = layout->grid_cells[r * layout->cols + c];
@@ -297,6 +319,7 @@ void export_layout_to_files(GdkPixbuf *pixbuf, PageLayout *layout, const char *o
         }
     }
 
+    // Save words
     if (layout->has_wordlist) {
         snprintf(path, sizeof(path), "%s/words", output_folder); 
         create_directory(path);
@@ -308,4 +331,3 @@ void export_layout_to_files(GdkPixbuf *pixbuf, PageLayout *layout, const char *o
         }
     }
 }
-#pragma GCC diagnostic pop
