@@ -204,8 +204,8 @@ void train(Network* net, TrainingExample* examples, size_t num_examples, int epo
         }
 
 
-        // Display accuracy every 100 epochs
-        if ((epoch + 1) % 100 == 0) {
+        // Display accuracy every 1 epochs
+        if ((epoch + 1) % 1 == 0) {
             int correct = 0;
             double *hidden = malloc(net->hidden_size * sizeof(double));
             double *output = malloc(net->output_size * sizeof(double));
